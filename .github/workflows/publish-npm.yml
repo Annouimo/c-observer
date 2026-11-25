@@ -1,0 +1,120 @@
+name: Prepare and publish Observer npm preview
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-npm.yml'
+      - 'scripts/package-preview.mjs'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "DRY_RUN: private tarball; BOOTSTRAP_PACK: first manual publish tarball; PUBLISH_NEXT: OIDC preview"
+        type: choice
+        default: DRY_RUN
+        required: true
+        options: [DRY_RUN, BOOTSTRAP_PACK, PUBLISH_NEXT]
+      version:
+        description: "Explicit prerelease (e.g. 0.1.0-beta.1); stable release is not enabled"
+        required: true
+        type: string
+        default: '0.1.0-beta.1'
+permissions:
+  contents: read
+concurrency:
+  group: observer-npm-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    env:
+      MODE: ${{ inputs.mode || 'DRY_RUN' }}
+      VERSION: ${{ inputs.version || '0.1.0-dev.1' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Guard release mode and version
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc|dev)\.[0-9]+$ ]]
+          if [[ "$MODE" != DRY_RUN ]]; then
+            test "$GITHUB_REF" = refs/heads/main
+            test -s LICENSE
+          fi
+      - run: go test ./...
+      - run: go vet ./...
+      - name: Package native binaries
+        run: |
+          set -euo pipefail
+          args=()
+          if [[ "$MODE" != DRY_RUN ]]; then args+=(--publishable); fi
+          node scripts/package-preview.mjs "$VERSION" "$RUNNER_TEMP/observer-dist" "${args[@]}"
+      - name: Verify actual installed tarball
+        run: |
+          set -euo pipefail
+          file="$(find "$RUNNER_TEMP/observer-dist" -maxdepth 1 -name '*.tgz' -print -quit)"
+          test -n "$file"
+          npm install --prefix "$RUNNER_TEMP/observer-install" --no-save --ignore-scripts --no-audit --no-fund "$file"
+          root="$RUNNER_TEMP/observer-install/node_modules/@annouimo/c-observer"
+          binary="$root/bin/linux-x64/c-observer"
+          test -x "$binary"
+          test "$("$binary" --version)" = "$VERSION"
+          "$binary" --capabilities
+          ROOT="$root" node --input-type=module - <<'NODE'
+          import fs from "node:fs";
+          import path from "node:path";
+          import {createHash} from "node:crypto";
+          const root=process.env.ROOT;
+          const pkg=JSON.parse(fs.readFileSync(path.join(root,"package.json")));
+          const m=JSON.parse(fs.readFileSync(path.join(root,"manifest.json")));
+          if(pkg.name!=="@annouimo/c-observer" || pkg.version!==process.env.VERSION || m.version!==pkg.version || pkg.scripts) throw Error("unexpected package metadata");
+          if(process.env.MODE==="DRY_RUN" ? pkg.private!==true : pkg.private===true || pkg.publishConfig?.tag!=="next") throw Error("incorrect publication metadata");
+          for(const p of Object.values(m.platforms)) {
+            const digest=createHash("sha256").update(fs.readFileSync(path.join(root,p.executable))).digest("hex");
+            if(digest!==p.sha256) throw Error("binary digest mismatch");
+          }
+          NODE
+          (cd "$RUNNER_TEMP/observer-dist"; sha256sum *.tgz *.tar.gz > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: observer-npm-${{ env.VERSION }}
+          path: |
+            ${{ runner.temp }}/observer-dist/*.tgz
+            ${{ runner.temp }}/observer-dist/*.tar.gz
+            ${{ runner.temp }}/observer-dist/SHA256SUMS
+          if-no-files-found: error
+  publish-next:
+    needs: pack
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'PUBLISH_NEXT'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - run: npm install --global 'npm@^11.21.0'
+      - uses: actions/download-artifact@v4
+        with:
+          name: observer-npm-${{ inputs.version }}
+          path: release
+      - name: Publish the verified tarball to next only
+        run: |
+          set -euo pipefail
+          cd release
+          sha256sum -c SHA256SUMS
+          shopt -s nullglob
+          files=(*.tgz)
+          test "${#files[@]}" = 1
+          npm publish "./${files[0]}" --access public --tag next
