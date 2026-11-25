@@ -12,13 +12,16 @@ import (
 
 func main() {
 	path:=flag.String("fixture","testdata/snapshots/wrong-index.json","synthetic fixture path")
+	setup:=flag.Bool("setup",false,"preview standalone configuration form without executing C")
 	flag.Parse()
-	if err:=run(*path);err!=nil {fmt.Fprintln(os.Stderr,err);os.Exit(1)}
+	if err:=run(*path,*setup);err!=nil {fmt.Fprintln(os.Stderr,err);os.Exit(1)}
 }
-func run(path string) error {
+func run(path string,setup bool) error {
 	f,err:=os.Open(path);if err!=nil{return err}
 	defer f.Close()
 	fixture,err:=tui.DecodeFixture(f);if err!=nil{return err}
-	_,err=tea.NewProgram(tui.NewPreview(fixture),tea.WithAltScreen()).Run()
+	model:=tui.NewPreview(fixture)
+	if setup {model=tui.NewSetupPreview(fixture)}
+	_,err=tea.NewProgram(model,tea.WithAltScreen()).Run()
 	return err
 }
