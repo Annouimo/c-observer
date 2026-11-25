@@ -45,18 +45,20 @@ func (m *Model) handleInspector(msg tea.KeyMsg) tea.Cmd {
 		switch k {
 		case "left","right","home","end":
 			switch k {
-			case "left":m.replay.Move(-1)
-			case "right":m.replay.Move(1)
-			case "home":m.replay.Seek(0)
-			case "end":m.replay.Seek(len(m.replay.Run.Snapshots))
+			case "left":m.navigate(-1)
+			case "right":m.navigate(1)
+			case "home":m.seek(0)
+			case "end":m.seek(len(m.replay.Run.Snapshots))
 			}
 			m.modalScroll=0
 		case "up":m.modalScroll=max(0,m.modalScroll-1)
 		case "down":
-			if row,ok:=m.inspectedRow();ok {m.modalScroll=min(m.modalScroll+1,max(0,len(TableFor(row,m.replay.Rows(nil)).Rows)-1))}
+			if row,ok:=m.inspectedRow();ok {m.modalScroll=min(m.modalScroll+1,max(0,len(m.dataTable(row,m.replay.Rows(nil)).Rows)-1))}
 		case "[":m.modalCol=max(0,m.modalCol-1)
 		case "]":
-			if row,ok:=m.inspectedRow();ok {m.modalCol=min(m.modalCol+1,max(0,len(TableFor(row,m.replay.Rows(nil)).Headers)-2))}
+			if row,ok:=m.inspectedRow();ok {m.modalCol=min(m.modalCol+1,max(0,len(m.dataTable(row,m.replay.Rows(nil)).Headers)-2))}
+		case "v":
+			if row,ok:=m.inspectedRow();ok {m.toggleFull(row);m.modalScroll=0;m.modalCol=0}
 		case "h":
 			if row,ok:=m.inspectedRow();ok && row.Reliable {m.target=row;m.mode="history";m.history=m.replay.History(row);m.modalScroll=0}
 		case "a":
@@ -75,7 +77,7 @@ func (m *Model) handleInspector(msg tea.KeyMsg) tea.Cmd {
 		case "home":m.modalScroll=0
 		case "end":m.modalScroll=max(0,len(m.history)-1)
 		case "enter":
-			if len(m.history)>0 {m.seek(m.history[m.modalScroll].Position);if m.mode=="line-history" {m.focus=0} else {m.focus=1};m.mode=""}
+			if len(m.history)>0 {m.seek(m.history[m.modalScroll].Position);if m.mode=="line-history" {m.focus=0} else {m.focus=1;m.selectHistoryTarget()};m.mode=""}
 		}
 	case "range":
 		switch k {
@@ -119,7 +121,9 @@ func (m Model) inspectedRow() (VariableRow,bool) {
 		// An unstable object is inspectable only at the originally selected pause.
 		if m.replay.Position!=m.targetPosition {return VariableRow{},false}
 	}
-	return findRow(m.replay.Rows(nil),m.target.Key)
+	row,ok:=findRow(m.replay.Rows(nil),m.target.Key)
+	if m.target.Reliable && ok && !row.Reliable {return VariableRow{},false}
+	return row,ok
 }
 
 // renderTable repeats the index column while allowing horizontal column paging.
@@ -174,11 +178,11 @@ func (m Model) inspector(w,h int) string {
 		if !ok {
 			lines=append(lines,"当前快照中无法确认此对象；不显示旧值。")
 		} else {
-			lines=append(lines,clip(row.Type+" · "+cellFor(row).Text,w),"")
-			t:=TableFor(row,m.replay.Rows(nil))
+			lines=append(lines,clip(row.Type+" · "+cellFor(row).Text,w),muted.Render(clip(m.rangeLabel(row),w)))
+			t:=m.dataTable(row,m.replay.Rows(nil))
 			lines=append(lines,renderTable(t,w,max(1,h-7),m.modalScroll,m.modalCol)...)
 		}
-		lines=append(lines,muted.Render(clip("←/→ 快照  ↑/↓ 滚动  [/] 列  H 历史  A 数组范围  Esc 返回",w)))
+		lines=append(lines,muted.Render(clip("←/→ 回放  ↑/↓ 滚动  [/] 列  V 全部/关注  H 历史  A 采集  Esc 返回",w)))
 	case "history","line-history":
 		label:="变量历史 · 仅可靠身份与已记录变化，非完整赋值日志"
 		if m.mode=="line-history" {label=fmt.Sprintf("本行历史 · %d 次记录暂停（非准确执行次数）",len(m.history))}
