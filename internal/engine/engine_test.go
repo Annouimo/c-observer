@@ -4,8 +4,10 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -47,6 +49,7 @@ func realConfig(t *testing.T) observer.LaunchConfig {
 
 func TestRealObservation(t *testing.T) {
 	config := realConfig(t)
+	config.KeepLocations = nil
 	result := (Engine{}).Run(context.Background(), config)
 	if result.Reason != observer.Exited || result.ExitCode == nil || *result.ExitCode != 0 ||
 		result.CleanupError != "" {
@@ -57,12 +60,18 @@ func TestRealObservation(t *testing.T) {
 		t.Fatalf("unexpected output: %+v", result.Output)
 	}
 	callback, before, after := false, false, false
+	var beforeID, afterID string
+	resumedMain := false
 	for i, snapshot := range result.Snapshots {
 		if snapshot.ID != i || snapshot.OutputOffsets.StdoutBytes > len(result.Output.Stdout) ||
 			snapshot.OutputOffsets.StderrBytes > len(result.Output.Stderr) {
 			t.Fatalf("invalid snapshot %d", i)
 		}
+		resumedMain = resumedMain || callback && snapshot.Location.Function == "main"
 		callback = callback || snapshot.Location.Function == "compare"
+		if snapshot.Location.File == "" {
+			t.Fatalf("unexpected stop in library code: %+v", snapshot.Location)
+		}
 		for _, frame := range snapshot.Frames {
 			for _, v := range frame.Variables {
 				if v.Name != "birthdays" || len(v.Children) != 1 || v.Children[0].Index == nil ||
@@ -73,14 +82,40 @@ func TestRealObservation(t *testing.T) {
 					if field.Name == "day" && field.Status == observer.Observed {
 						before = before || field.Value == "28"
 						after = after || field.Value == "29"
+						if frame.IdentityReliable && v.IdentityReliable && field.IdentityReliable {
+							switch field.Value {
+							case "28":
+								beforeID = field.ID
+							case "29":
+								afterID = field.ID
+							}
+						}
 					}
 				}
 			}
 		}
 	}
-	if !callback || !before || !after {
-		t.Fatalf("missing real captures: callback=%v day28=%v day29=%v snapshots=%d diagnostics=%+v",
-			callback, before, after, len(result.Snapshots), result.Diagnostics)
+	if !callback || !resumedMain || !before || !after {
+		t.Fatalf("missing real captures: callback=%v resumedMain=%v day28=%v day29=%v snapshots=%d diagnostics=%+v",
+			callback, resumedMain, before, after, len(result.Snapshots), result.Diagnostics)
+	}
+	if beforeID == "" || beforeID != afterID {
+		t.Fatalf("birthday day has no stable identity: 28=%q 29=%q", beforeID, afterID)
+	}
+	if path := os.Getenv("C_OBSERVER_RECORD"); path != "" {
+		record := struct {
+			Synthetic bool               `json:"synthetic"`
+			Platform  string             `json:"platform"`
+			Stdin     string             `json:"stdin"`
+			Run       observer.RunResult `json:"run"`
+		}{false, runtime.GOOS + "/" + runtime.GOARCH, string(config.Stdin), result}
+		data, err := json.MarshalIndent(record, "", "  ")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, append(data, '\n'), 0600); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -163,5 +198,118 @@ func TestInvalidConfig(t *testing.T) {
 		if result := (Engine{}).Run(context.Background(), config); result.Reason != observer.InvalidConfig {
 			t.Fatalf("unexpected reason: %s", result.Reason)
 		}
+	}
+}
+
+func TestRealIdentityBoundaries(t *testing.T) {
+	config := realConfig(t)
+	source, err := os.ReadFile("../../testdata/programs/identity.c")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(config.SourcePath, source, 0600); err != nil {
+		t.Fatal(err)
+	}
+	config.KeepLocations = nil
+	config.ArrayRanges = nil
+	result := (Engine{}).Run(context.Background(), config)
+	if result.Reason != observer.Exited {
+		t.Fatalf("run failed: %s %s", result.Reason, result.Message)
+	}
+	iterations := map[string]bool{}
+	var recurseDepth int
+	for _, snapshot := range result.Snapshots {
+		depth := 0
+		for _, frame := range snapshot.Frames {
+			if frame.Location.Function == "recurse" {
+				depth++
+				if frame.IdentityReliable {
+					t.Fatal("recursive frame was marked reliable")
+				}
+			}
+			for _, variable := range frame.Variables {
+				if strings.HasPrefix(variable.Name, "shadow") && variable.IdentityReliable {
+					t.Fatalf("shadowed name was marked reliable: %s", variable.ID)
+				}
+				if variable.Name == "iteration" {
+					if variable.IdentityReliable {
+						t.Fatal("loop-local object was marked reliable")
+					}
+					iterations[variable.Value] = true
+				}
+			}
+		}
+		recurseDepth = max(recurseDepth, depth)
+	}
+	if !iterations["0"] || !iterations["1"] || recurseDepth != 3 {
+		t.Fatalf("missing real loop or recursion stops: iterations=%v depth=%d", iterations, recurseDepth)
+	}
+}
+
+func TestRealGlobalsAndStatics(t *testing.T) {
+	config := realConfig(t)
+	data, err := os.ReadFile("../../testdata/programs/globals.c")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(config.SourcePath, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	config.KeepLocations = nil
+	config.ArrayRanges = []observer.ArrayRange{{Path: "grid", Start: 900, Count: 1}}
+	result := (Engine{}).Run(context.Background(), config)
+	if result.Reason != observer.Exited || !result.Session.Capabilities.Globals {
+		t.Fatalf("run: %s %s, capabilities %+v", result.Reason, result.Message, result.Session.Capabilities)
+	}
+	visitID, totalID, cellID := "", "", ""
+	visits := map[string]bool{}
+	sawTotal, sawCell, sawRecursion := false, false, false
+	for _, snapshot := range result.Snapshots {
+		seen := map[string]bool{}
+		for _, v := range snapshot.Globals {
+			if !v.IdentityReliable || seen[v.ID] {
+				t.Fatalf("duplicate or unreliable global at stop %d: %+v", snapshot.ID, v)
+			}
+			seen[v.ID] = true
+			switch v.Name {
+			case "visits":
+				if v.Scope != observer.FunctionStaticScope || visitID != "" && visitID != v.ID {
+					t.Fatalf("function static has invalid scope or identity: %+v", v)
+				}
+				visitID = v.ID
+				visits[v.Value] = true
+				frames := 0
+				for _, f := range snapshot.Frames {
+					if f.Location.Function == "visit" {
+						frames++
+					}
+				}
+				sawRecursion = sawRecursion || frames == 3
+			case "total":
+				if v.Scope != observer.FileStaticScope || totalID != "" && totalID != v.ID {
+					t.Fatalf("file static has invalid scope or identity: %+v", v)
+				}
+				totalID = v.ID
+				sawTotal = sawTotal || v.Value == "6"
+			case "grid":
+				if v.Scope != observer.GlobalScope || len(v.Children) != 1 ||
+					v.Children[0].Index == nil || *v.Children[0].Index != 900 {
+					t.Fatalf("global grid has invalid scope or page: %+v", v)
+				}
+				for _, cell := range v.Children[0].Children {
+					if cell.Index != nil && *cell.Index == 1 {
+						if !cell.IdentityReliable || cellID != "" && cellID != cell.ID {
+							t.Fatalf("global cell has invalid identity: %+v", cell)
+						}
+						cellID = cell.ID
+						sawCell = sawCell || cell.Value == "6"
+					}
+				}
+			}
+		}
+	}
+	if !visits["1"] || !visits["3"] || !sawTotal || !sawCell || !sawRecursion {
+		t.Fatalf("missing actual observations: visits=%v total=%v cell=%v recursion=%v",
+			visits, sawTotal, sawCell, sawRecursion)
 	}
 }

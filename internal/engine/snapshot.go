@@ -12,6 +12,7 @@ import (
 )
 
 type stackFrame struct {
+	PC       string
 	ID       int
 	Location observer.SourceLocation
 }
@@ -103,10 +104,11 @@ func (c *capture) keepLocations() error {
 func (c *capture) stack(thread int) ([]stackFrame, error) {
 	var body struct {
 		StackFrames []struct {
-			ID     int
-			Name   string
-			Source struct{ Path string }
-			Line   int
+			InstructionPointerReference string
+			ID                          int
+			Name                        string
+			Source                      struct{ Path string }
+			Line                        int
 		}
 	}
 	if err := c.ask("stackTrace", map[string]any{"threadId": thread, "levels": min(32, c.limits.MaxSnapshotNodes)}, &body); err != nil {
@@ -114,7 +116,7 @@ func (c *capture) stack(thread int) ([]stackFrame, error) {
 	}
 	frames := make([]stackFrame, 0, len(body.StackFrames))
 	for _, f := range body.StackFrames {
-		frames = append(frames, stackFrame{ID: f.ID, Location: c.location(f.Source.Path, f.Line, f.Name)})
+		frames = append(frames, stackFrame{ID: f.ID, PC: f.InstructionPointerReference, Location: c.location(f.Source.Path, f.Line, f.Name)})
 	}
 	return frames, nil
 }
@@ -125,8 +127,16 @@ func (c *capture) snapshot(frames []stackFrame) (observer.Snapshot, error) {
 		snapshot.Location = frames[0].Location
 	}
 	nodes := c.limits.MaxSnapshotNodes
+	seenGlobals := make(map[declarationKey]bool)
+	entry := -1
+	if len(frames) < min(32, c.limits.MaxSnapshotNodes) {
+		entry = c.identity.entryFrame(frames, snapshot.ID == 0 && snapshot.Location.Function == "main")
+	}
 	for depth, raw := range frames {
 		frame := observer.Frame{ID: fmt.Sprintf("%d:%d", snapshot.ID, depth), Location: raw.Location}
+		if depth == entry {
+			frame.ID, frame.IdentityReliable = "entry-main", true
+		}
 		if raw.Location.File != "" && !c.skip(raw.Location.File) && nodes > 0 {
 			var body struct {
 				Scopes []struct {
@@ -140,6 +150,12 @@ func (c *capture) snapshot(frames []stackFrame) (observer.Snapshot, error) {
 			frame.VariablesComplete = true
 			for _, scope := range body.Scopes {
 				name := strings.ToLower(scope.Name)
+				if (name == "globals" || name == "statics") && len(c.index.globals) > 0 {
+					if err := c.collectGlobals(scope.VariablesReference, &nodes, seenGlobals, &snapshot); err != nil {
+						return snapshot, err
+					}
+					continue
+				}
 				if name != "locals" && name != "arguments" {
 					continue
 				}
@@ -159,6 +175,9 @@ func (c *capture) snapshot(frames []stackFrame) (observer.Snapshot, error) {
 					if name == "arguments" {
 						v.Scope = observer.ParameterScope
 					}
+					if frame.IdentityReliable && name == "locals" {
+						c.identity.mark(&v, variableName(raw))
+					}
 					frame.Variables = append(frame.Variables, v)
 				}
 			}
@@ -175,6 +194,41 @@ func (c *capture) snapshot(frames []stackFrame) (observer.Snapshot, error) {
 	}
 	snapshot.OutputOffsets = observer.OutputOffsets{StdoutBytes: stdout, StderrBytes: stderr}
 	return snapshot, nil
+}
+
+func (c *capture) collectGlobals(ref int, nodes *int, seen map[declarationKey]bool, snapshot *observer.Snapshot) error {
+	if *nodes == 0 {
+		return nil
+	}
+	vars, err := c.variables(ref, 0, 0)
+	if err != nil {
+		return err
+	}
+	for _, raw := range vars {
+		decl := raw.Extensions.Declaration
+		if decl == nil || c.location(decl.Path, decl.Line, "").File != c.identity.source {
+			continue
+		}
+		key := declarationKey{variableName(raw), decl.Line}
+		scope := c.index.globals[key]
+		if scope == "" || seen[key] {
+			continue
+		}
+		if *nodes == 0 {
+			break
+		}
+		id := fmt.Sprintf("static-storage:%d:%s", key.line, key.name)
+		v, err := c.variable(raw, id, key.name, nil, 0, nodes)
+		if err != nil {
+			return err
+		}
+		v.Scope = scope
+		markObject(&v, id)
+		seen[key] = true
+		c.result.Session.Capabilities.Globals = true
+		snapshot.Globals = append(snapshot.Globals, v)
+	}
+	return nil
 }
 
 func outputSize(path string, limit int) (int, error) {
