@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -40,6 +41,27 @@ func cellFor(r VariableRow) Cell {
 func TableFor(parent VariableRow, rows []VariableRow) DataTable {
 	children:=childRows(parent,rows)
 	if parent.Raw.Kind==observer.Array {
+		matrix:=len(children)>0
+		for _,c:=range children {if c.Raw.Kind!=observer.Array {matrix=false;break}}
+		if matrix {
+			indices:=map[int]bool{}
+			for _,row:=range children {for _,c:=range childRows(row,rows) {if c.Raw.Index!=nil {indices[*c.Raw.Index]=true}}}
+			var columns []int
+			for i:=range indices {columns=append(columns,i)}
+			sort.Ints(columns)
+			if len(columns)>0 {
+				t:=DataTable{Headers:[]string{"行 / 列"}}
+				for _,i:=range columns {t.Headers=append(t.Headers,fmt.Sprintf("[%d]",i))}
+				for _,row:=range children {
+					line:=[]Cell{{Text:row.Name}}
+					byIndex:=map[int]VariableRow{}
+					for _,c:=range childRows(row,rows) {if c.Raw.Index!=nil {byIndex[*c.Raw.Index]=c}}
+					for _,i:=range columns {if c,ok:=byIndex[i];ok {line=append(line,cellFor(c))} else {line=append(line,Cell{Text:"未记录"})}}
+					t.Rows=append(t.Rows,line)
+				}
+				return t
+			}
+		}
 		recordArray:=len(children)>0
 		for _,c:=range children {if c.Raw.Kind!=observer.Struct {recordArray=false;break}}
 		if recordArray {
@@ -111,6 +133,22 @@ func (r Replay) History(target VariableRow) []HistoryEntry {
 			out=append(out,HistoryEntry{Position:i,Location:s.Location,Text:strings.Join(changes,"; "),Changed:true})
 		}
 		lastSeen=i
+	}
+	return out
+}
+
+// LineHistory lists recorded pauses, not exact execution counts.
+func (r Replay) LineHistory(loc observer.SourceLocation) []HistoryEntry {
+	if loc.File=="" || loc.Line<=0 {return nil}
+	var out []HistoryEntry
+	for i,s:=range r.Run.Snapshots {
+		if s.Location.File!=loc.File || s.Location.Line!=loc.Line {continue}
+		r.Position=i
+		var changes []string
+		for _,row:=range r.Rows(nil) {if row.Changed {changes=append(changes,row.Path+": "+row.Before+" → "+row.Value)}}
+		label:="暂停于此行"
+		if len(changes)>0 {label+=" · "+strings.Join(changes,"; ")}
+		out=append(out,HistoryEntry{Position:i,Location:s.Location,Text:label})
 	}
 	return out
 }
