@@ -250,3 +250,25 @@ func (m Model) workspaceOverlay(w,h int) string {
 	lines=append(lines,muted.Render(clip("↑/↓ 或 Tab 选择  Enter 确认  Esc 返回",w)))
 	return fixed(lines,w,h)
 }
+
+func (m *Model) selectHistoryTarget() {
+	s:=m.replay.Current()
+	if s==nil {return}
+	for frame:=0;frame<max(1,len(s.Frames));frame++ {
+		r:=m.replay;r.Frame=frame
+		all:=r.Rows(nil)
+		row,ok:=findRow(all,m.target.Key)
+		if !ok || !row.Reliable {continue}
+		m.replay.Frame=frame
+		next:=make(map[string]bool,len(m.collapsed))
+		for k,v:=range m.collapsed {next[k]=v}
+		for parent:=row.Parent;parent!=""; {
+			p,ok:=findRow(all,parent);if !ok {break}
+			next[p.Key]=false
+			parent=p.Parent
+		}
+		m.collapsed=next
+		for i,v:=range m.replay.Rows(next) {if v.Key==row.Key {m.varCursor=i;break}}
+		return
+	}
+}
