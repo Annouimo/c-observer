@@ -138,7 +138,7 @@ func (r Replay) Rows(collapsed map[string]bool) []VariableRow {
 			if row.Expandable && !row.Collapsed {
 				var oldChildren []observer.Variable
 				if match { oldChildren=o.Children }
-				walk(v.Children,oldChildren,key,depth+1,match)
+				walk(v.Children,oldChildren,key,depth+1,match && v.Status==observer.Observed && o.Status==observer.Observed)
 			}
 		}
 	}
