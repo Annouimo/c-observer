@@ -22,6 +22,13 @@ jobs:
       - run: go vet ./...
       - run: go build ./cmd/c-observer-preview
       - run: CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o c-observer-preview-macos-arm64 ./cmd/c-observer-preview
+      - name: Render actual synthetic workspace previews
+        run: |
+          mkdir -p preview-text
+          ./c-observer-preview -fixture testdata/snapshots/adaptive-array.json -dump -step 6 -width 100 -height 26 > preview-text/adaptive.txt
+          ./c-observer-preview -fixture testdata/snapshots/adaptive-array.json -dump -step 0 -width 100 -height 26 > preview-text/result.txt
+          ./c-observer-preview -fixture testdata/snapshots/adaptive-array.json -dump -step 6 -width 50 -height 18 > preview-text/narrow.txt
+          cat preview-text/adaptive.txt preview-text/result.txt
       - run: cat go.sum
       - uses: actions/upload-artifact@v4
         with:
@@ -30,6 +37,7 @@ jobs:
             c-observer-preview
             testdata/snapshots/
             go.sum
+            preview-text/
       - uses: actions/upload-artifact@v4
         with:
           name: tui-preview-macos-arm64

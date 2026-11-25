@@ -1,35 +1,51 @@
-# TUI prototype
+# C Observer 前端：体验版预览
 
-Status: fixture-driven frontend under review on feat/tui; no live backend wired into the executable yet. Shared observer types and engine implementation are untouched.
+状态：合成回放和真实 LLDB 预览入口已经实现；本分支用于产品审核，不是正式发行。主程序入口由双方在合并时协调。
 
-## Preview
+## 本地预览
 
-From repository root with Go installed:
+从仓库根目录（Go 1.23 或兼容版本）：
 
-    go run -mod=mod ./cmd/c-observer-preview
-    go run -mod=mod ./cmd/c-observer-preview -setup
-    go run -mod=mod ./cmd/c-observer-preview -fixture testdata/snapshots/cancelled.json
-    go run -mod=mod ./cmd/c-observer-preview -fixture testdata/snapshots/compile-failed.json
+```sh
+go run -mod=mod ./cmd/c-observer-preview -fixture testdata/snapshots/adaptive-array.json
+go run -mod=mod ./cmd/c-observer-preview -setup
+go run -mod=mod ./cmd/c-observer-preview -fixture testdata/snapshots/wrong-index.json
+go run -mod=mod ./cmd/c-observer-preview -fixture testdata/snapshots/compile-failed.json
+```
 
-All previews are explicitly labeled 合成数据预览. R resets the fixture; it does not execute C. The setup preview edits a launch configuration but does not start a process. Array-range confirmation in preview cannot collect new data.
+默认仍是合成回放，界面明确标记，不运行 C。查看实际渲染的文本：
+```sh
+go run -mod=mod ./cmd/c-observer-preview -fixture testdata/snapshots/adaptive-array.json -dump -step 6 -width 100 -height 30
+```
+0 表示最终结果。Linux 和 macOS arm64 预览二进制由 CI 上传；后者仅交叉构建，真机视觉验收另做。
+
+## 真实运行
+
+显式加 -live 才启动真实程序：
+```sh
+go run -mod=mod ./cmd/c-observer-preview -live
+go run -mod=mod ./cmd/c-observer-preview -live -source main.c -input sample.in -expected sample.out
+```
+可用 -compiler/-debugger 指定工具链。-live -setup 显示启动配置。依赖已安装的 Clang / LLDB DAP。当前正式引擎仅 LLDB；GDB 与 Windows 运行支持由 Codex 另行实现。真实记录不会标为合成；身份不可靠时不生成虚假变化或自动裁剪。
 
 ## 工作台
+- ←/→：历史前后；↑/↓：区域选择；Tab/Shift+Tab：区域；Home/End：全部历史首尾。
+- Enter：数据详情（数据区）、调用栈（源码区）、输入输出切换（控制台）。
+- F：选择全部 / 任意可靠变化 / 当前变量变化 / 当前源码行的停靠记录。J：直接输入快照号。H：对象或源码行历史。
+- M：当前区域最大化/恢复，Esc 返回；S：调用栈；O：当前对象操作。
+- D/A/V/T：数据表 / 采集范围重跑 / 完整与自动展示切换 / 树状展开。O 可访问同类操作及手动展示区间（矩阵支持行、列）。
+- [ / ]：源码横向滚动、详情表翻列。R：重跑（预览重置）；E：独立模式重新配置；?：帮助；Q：退出。
 
-宽屏显示源码 / 变量与输入 / 输出；窄屏通过 Tab 切换区域。变量默认折叠聚合对象，标出已记录子节点中的变化数量。D 打开类型化数据表：标量/成员列表、一维数组、二维数组、结构体数组。表格用真实下标，缺失项明确为未记录，横向列可分页。H 查看选定变量的可靠变化或当前源码行的已记录停靠点，Enter 跳回对应快照。A 修改数组采集范围，真实引擎下重新运行，不回填旧历史。源文件与运行记录保持一致。输出来自有界字节前缀，不保证逐行输出归因；结尾页显示最终输出及退出状态，输出比较为逐字节比较，不等同 OJ 判定。
+基础变量按作用域、名称/类型/值组织。小数组、矩阵、结构体及结构体数组在空间允许时直接展示，声明容量不是折叠依据。详情表保留真实下标、缺失标记、可靠相邻变化。固定关注范围由完整已采集历史计算；一维两端各 2 项，二维各 1 行列；无可靠变化时完整显示采集范围。V 随时恢复完整范围，再次 V 恢复自动范围。展示区间和采集页分离，后者需重跑。未观察到变化不等于未初始化或未使用。
 
-- 左/右、Home/End：历史前后、首尾；End 是结束页，不是调试器快照。
-- Tab/Shift+Tab：区域焦点；上/下、PgUp/PgDn：选择或滚动。
-- Enter：展开/折叠变量，或切换输入输出视图。
-- D：变量数据表；表内 [ 和 ] 翻列，左右键仍可切换快照。
-- H：源代码焦点时当前行历史，变量焦点时对象历史；历史页 Enter 跳转。
-- A：数组采集范围，Tab 切换字段，Ctrl+U 清空字段。
-- R：重跑（合成预览重置）；E：独立模式修改启动配置；Esc：关闭详情或退出；Q：退出。
-- 配置页：Tab 切换、Enter 换行或确认、Ctrl+R 开始、Esc 退出。
+输入与实际输出并排，控制台可切换 stderr、预期和对照；最终状态为单独页面。对照按行号配对、逐字节比较，不做 OJ 判题，显示空格/回车/换行。长行折行。编译失败、运行异常、取消及截断保留历史或诊断。Esc 取消采集，Q 等待后端清理后退出。
 
-## Real engine integration
+启动配置：Ctrl+F 补全 C 文件路径，Ctrl+O 导入当前样例字段（普通文件，1 MiB 上限）；Tab 切换，Ctrl+R 开始。源码内容由当次 RunResult 冻结，修改需重跑。
 
-NewLive(engine, config) skips setup for Companion/CLI callers. NewSetup(engine, config) accepts source path and multiline stdin plus optional expected stdout. Engine.Run executes in a Bubble Tea command and returns a completed RunResult. Esc requests cancellation, Q requests cancellation and exit after cleanup. No streaming or true reverse execution.
-
-Pending: real engine integration and native terminal visual review, stable handling of non-top stack frames (only active frame is rendered now), keyboard/UI refinement, production CLI wiring and packaging. Do not merge shared dependency or entrypoint changes without coordination.
-
-Tests cover the fixture data, history, table cells, non-prefix pages, range rerun, startup form, cancellation/empty-history states, terminal sizing and navigation. See CI for the actual validation status of each revision.
+## 验收
+```sh
+go test ./...
+go vet ./...
+C_OBSERVER_REAL_DEBUGGER=1 go test -v -run '^TestRealEngineReplay$' ./internal/tui
+```
+真实用例通过已发布 LLDB 后端运行大容量数组、含零样例、检查真实输出、将记录送入 TUI 并逐快照渲染；不是对 Codex 尚未推送的身份识别功能的验证。合成测试覆盖自适应范围、稀疏缺失、矩阵、结构体、栈帧、历史筛选、控制台、样例导入。最终需在真实终端审核布局和键位，并联调新引擎。详见 docs/frontend-next.md。

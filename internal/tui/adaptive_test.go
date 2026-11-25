@@ -123,3 +123,32 @@ func TestWorkspaceDimensions(t *testing.T) {
 		}
 	}
 }
+
+func TestManualMatrixRange(t *testing.T) {
+	matrix:=observer.Variable{ID:"m",Name:"m",Kind:observer.Array,Type:"int[4][4]",Status:observer.Observed,IdentityReliable:true}
+	for i:=0;i<4;i++ {
+		row:=testArray(fmt.Sprint(i),[]int{1,2,3,4},0)
+		row.Index=testPtr(i);row.Name=fmt.Sprintf("[%d]",i)
+		matrix.Children=append(matrix.Children,row)
+	}
+	m:=Model{replay:NewReplay(testRun(matrix)),collapsed:map[string]bool{}}
+	row:=m.replay.Rows(nil)[0]
+	m.openDisplayRange(row)
+	if m.displayFields!=4 {t.Fatal("matrix must offer both axes")}
+	m.displayInput=[4]string{"1","2","2","3"}
+	m.handleNumeric("enter")
+	if m.mode!="" {t.Fatal("valid manual range rejected")}
+	table:=m.dataTable(row,m.replay.Rows(nil))
+	if len(table.Rows)!=2 || len(table.Headers)!=3 || table.Headers[1]!="[2]" || table.Rows[0][0].Text!="[1]" {t.Fatalf("range: %+v",table)}
+	m.toggleFull(row)
+	if len(m.dataTable(row,m.replay.Rows(nil)).Rows)!=4 {t.Fatal("full view failed")}
+	m.toggleFull(row)
+	if _,ok:=m.manualRanges[row.Key];ok {t.Fatal("auto range not restored")}
+}
+func TestActualPreviewText(t *testing.T) {
+	m:=NewPreview(fixture(t,"adaptive-array"))
+	s,err:=m.PreviewText(100,26,6)
+	if err!=nil || !strings.Contains(s,"自动关注 0..6") || !strings.Contains(s,"合成数据预览") {t.Fatalf("preview: %v %s",err,s)}
+	s,err=m.PreviewText(100,26,0)
+	if err!=nil || !strings.Contains(s,"输出一致") {t.Fatalf("ending: %v %s",err,s)}
+}
