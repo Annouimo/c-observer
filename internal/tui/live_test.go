@@ -50,8 +50,8 @@ int main(void) {
 			if r.Name=="a" && r.Raw.Kind==observer.Array && len(r.Raw.Children)>0 {
 				seenArray=true
 				if !r.Reliable && m.displayFocus(r).Automatic {t.Fatal("unreliable real identity cropped")}
-				t:=m.dataTable(r,m.replay.Rows(nil))
-				if len(t.Rows)==0 {panic("real array missing")}
+				table:=m.dataTable(r,m.replay.Rows(nil))
+				if len(table.Rows)==0 {t.Fatal("real array missing")}
 			}
 		}
 		for _,line:=range strings.Split(m.View(),"\n") {if lipgloss.Width(line)>m.width {t.Fatal("render overflow")}}

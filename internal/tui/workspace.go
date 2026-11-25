@@ -61,6 +61,11 @@ func (m *Model) toggleFull(row VariableRow) {
 	for k,v:=range m.fullArrays {next[k]=v}
 	next[row.Key]=!next[row.Key]
 	m.fullArrays=next
+	if !next[row.Key] {
+		manual:=map[string]FocusRange{}
+		for k,v:=range m.manualRanges {if k!=row.Key {manual[k]=v}}
+		m.manualRanges=manual
+	}
 }
 
 func (m *Model) navigate(dir int) {
@@ -166,7 +171,11 @@ func (m *Model) openDisplayRange(row VariableRow) {
 	if !b.Valid {
 		for _,child:=range row.Raw.Children {if child.Index!=nil {b.Add(*child.Index)}}
 	}
-	m.rangeInput=[2]string{fmt.Sprint(b.Lo),fmt.Sprint(b.Hi)}
+	m.displayInput=[4]string{fmt.Sprint(b.Lo),fmt.Sprint(b.Hi),"0","0"}
+	m.displayFields=2
+	cols:=Bounds{}
+	for _,child:=range row.Raw.Children {if child.Kind==observer.Array {for _,cell:=range child.Children {if cell.Index!=nil {cols.Add(*cell.Index)}}}}
+	if cols.Valid {m.displayFields=4;m.displayInput[2]=fmt.Sprint(cols.Lo);m.displayInput[3]=fmt.Sprint(cols.Hi)}
 	m.notice=""
 }
 func (m *Model) handleNumeric(k string) tea.Cmd {
@@ -183,26 +192,41 @@ func (m *Model) handleNumeric(k string) tea.Cmd {
 		return nil
 	}
 	switch k {
-	case "tab","shift+tab","up","down":m.rangeField=1-m.rangeField
-	case "ctrl+u":m.rangeInput[m.rangeField]=""
+	case "tab","down":m.rangeField=(m.rangeField+1)%m.displayFields
+	case "shift+tab","up":m.rangeField=(m.rangeField+m.displayFields-1)%m.displayFields
+	case "ctrl+u":m.displayInput[m.rangeField]=""
 	case "backspace":
-		s:=m.rangeInput[m.rangeField];if len(s)>0 {m.rangeInput[m.rangeField]=s[:len(s)-1]}
+		v:=m.displayInput[m.rangeField];if len(v)>0 {m.displayInput[m.rangeField]=v[:len(v)-1]}
 	case "enter":
-		lo,e1:=strconv.Atoi(m.rangeInput[0]);hi,e2:=strconv.Atoi(m.rangeInput[1])
-		b:=Bounds{}
-		for _,child:=range m.target.Raw.Children {if child.Index!=nil {b.Add(*child.Index)}}
-		if e1!=nil || e2!=nil || !b.Valid || lo>hi || lo<b.Lo || hi>b.Hi {m.notice="请输入已采集下标边界内的闭区间。";return nil}
+		readBounds:=func(start int,b Bounds)(Bounds,bool) {
+			lo,e1:=strconv.Atoi(m.displayInput[start]);hi,e2:=strconv.Atoi(m.displayInput[start+1])
+			return Bounds{Lo:lo,Hi:hi,Valid:true},e1==nil && e2==nil && b.Valid && lo<=hi && lo>=b.Lo && hi<=b.Hi
+		}
+		b,cols:=Bounds{},Bounds{}
+		for _,child:=range m.target.Raw.Children {
+			if child.Index!=nil {b.Add(*child.Index)}
+			if child.Kind==observer.Array {for _,v:=range child.Children {if v.Index!=nil {cols.Add(*v.Index)}}}
+		}
+		rows,ok:=readBounds(0,b)
+		if !ok {m.notice="请输入已采集下标边界内的闭区间。";return nil}
+		f:=FocusRange{Rows:rows}
+		if m.displayFields==4 {
+			var valid bool
+			f.Cols,valid=readBounds(2,cols)
+			if !valid {m.notice="请输入已采集列边界内的闭区间。";return nil}
+		}
 		next:=map[string]FocusRange{}
 		for k,v:=range m.manualRanges {next[k]=v}
-		next[m.target.Key]=FocusRange{Rows:Bounds{Lo:lo,Hi:hi,Valid:true}}
+		next[m.target.Key]=f
 		m.manualRanges=next
 		full:=map[string]bool{}
 		for k,v:=range m.fullArrays {full[k]=v}
 		delete(full,m.target.Key);m.fullArrays=full
 		m.mode="";m.notice=""
 	default:
-		if isDigits(k) && len(m.rangeInput[m.rangeField])+len(k)<=18 {m.rangeInput[m.rangeField]+=k}
+		if isDigits(k) && len(m.displayInput[m.rangeField])+len(k)<=18 {m.displayInput[m.rangeField]+=k}
 	}
+
 	return nil
 }
 func isDigits(s string) bool {
@@ -231,9 +255,11 @@ func (m Model) workspaceOverlay(w,h int) string {
 		lines=append(lines,clip(fmt.Sprintf("快照编号 (1..%d): %s▏",len(m.replay.Run.Snapshots),m.jumpInput),w))
 	case "display-range":
 		lines=append(lines,clip("只调整已采集内容的展示，不重新运行。",w))
-		for i,name:=range []string{"起始下标","结束下标"} {
+		labels:=[]string{"起始下标","结束下标","起始列","结束列"}
+		if m.displayFields==4 {labels[0],labels[1]="起始行","结束行"}
+		for i,name:=range labels[:m.displayFields] {
 			mark:=" ";if m.rangeField==i {mark=">"}
-			lines=append(lines,clip(mark+" "+name+"  "+m.rangeInput[i],w))
+			lines=append(lines,clip(mark+" "+name+"  "+m.displayInput[i],w))
 		}
 	default:
 		options:=m.menuOptions()

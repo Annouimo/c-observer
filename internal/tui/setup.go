@@ -278,10 +278,12 @@ func (s *SetupState) completePath(base string) {
 }
 const maxImportedSample=1<<20
 func readSample(path string) (string,error) {
+	info,err:=os.Stat(path)
+	if err!=nil || !info.Mode().IsRegular() {return "",fmt.Errorf("请选择普通文件")}
 	f,err:=os.Open(path)
 	if err!=nil {return "",err}
 	defer f.Close()
-	info,err:=f.Stat()
+	info,err=f.Stat()
 	if err!=nil || !info.Mode().IsRegular() {return "",fmt.Errorf("请选择普通文件")}
 	data,err:=io.ReadAll(io.LimitReader(f,maxImportedSample+1))
 	if err!=nil {return "",err}

@@ -11,6 +11,7 @@ import (
 
 type Cell struct {
 	Text string
+	Current string
 	Changed bool
 }
 type DataTable struct {
@@ -33,7 +34,7 @@ func cellFor(r VariableRow) Cell {
 		value+=r.Detail
 	}
 	if value=="" {value="—"}
-	return Cell{Text:value,Changed:r.Changed}
+	return Cell{Text:value,Current:r.Value,Changed:r.Changed}
 }
 
 // TableFor renders only recorded children. A missing field is never treated as zero.

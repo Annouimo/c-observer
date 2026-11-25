@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sort"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
@@ -64,7 +65,7 @@ func focusTable(t DataTable, f FocusRange) DataTable {
 		// A sparse page should not turn into millions of synthetic rows.
 		var indices []int
 		for i:=range byIndex {indices=append(indices,i)}
-		sortInts(indices)
+		sort.Ints(indices)
 		next:=f.Rows.Lo
 		for _,i:=range indices {
 			if i>next {out.Rows=append(out.Rows,missing(fmt.Sprintf("[%d..%d]",next,i-1)))}
@@ -76,11 +77,6 @@ func focusTable(t DataTable, f FocusRange) DataTable {
 	}
 	return out
 }
-func sortInts(a []int) {
-	// Bounded by the recorded node budget.
-	for i:=1;i<len(a);i++ {for j:=i;j>0 && a[j]<a[j-1];j-- {a[j],a[j-1]=a[j-1],a[j]}}
-}
-
 func (m Model) displayFocus(row VariableRow) FocusRange {
 	if m.fullArrays[row.Key] {return FocusRange{}}
 	if f,ok:=m.manualRanges[row.Key];ok {return f}
@@ -100,7 +96,11 @@ func (m Model) dataTable(row VariableRow, rows []VariableRow) DataTable {
 func (m Model) rangeLabel(row VariableRow) string {
 	f:=m.displayFocus(row)
 	if f.Automatic {return focusLabel(f)}
-	if f.Rows.Valid {return fmt.Sprintf("手动展示 %d..%d",f.Rows.Lo,f.Rows.Hi)}
+	if f.Rows.Valid {
+		label:=fmt.Sprintf("手动展示 %d..%d",f.Rows.Lo,f.Rows.Hi)
+		if f.Cols.Valid {label+=fmt.Sprintf(" × %d..%d",f.Cols.Lo,f.Cols.Hi)}
+		return label
+	}
 	if m.fullArrays[row.Key] {return "全部已采集"}
 	return ""
 }
@@ -121,6 +121,7 @@ func arrayStrip(t DataTable,w int) []string {
 	for _,r:=range t.Rows {
 		if len(r)<2 {continue}
 		value:=r[1].Text
+		if r[1].Current!="" {value=r[1].Current}
 		if r[1].Changed {value="*"+value}
 		width:=min(max(5,runewidth.StringWidth(r[0].Text),runewidth.StringWidth(value)),min(w,24))
 		if used+width+1>w && used>0 {flush()}
@@ -176,6 +177,7 @@ func (m Model) variablePanel(w,h int) string {
 	// Each variable is a block; selection is by object, not rendered line.
 	type block struct { lines []string }
 	blocks:=[]block{}
+	lastScope:=""
 	for i,r:=range rows {
 		mark:=" "
 		if m.focus==1 && i==m.varCursor {mark=">"}
@@ -191,14 +193,20 @@ func (m Model) variablePanel(w,h int) string {
 		}
 		aggregate:=r.Raw.Kind==observer.Array || r.Raw.Kind==observer.Struct
 		if aggregate {prefix+="  "+r.Type}
-		nameW:=max(8,w*30/100)
-		line:=pad(clip(prefix,nameW),nameW)+" "+clip(value+"  "+r.Type,max(0,w-nameW-1))
+		nameW:=max(8,w*28/100)
+		typeW:=max(7,min(14,w*24/100))
+		line:=pad(clip(prefix,nameW),nameW)+" "+pad(clip(r.Type,typeW),typeW)+" "+clip(value,max(0,w-nameW-typeW-2))
 		if aggregate {
 			line=clip(prefix+" · "+value,w)
 		}
 		if hasChange {line=changed.Render(line)}
 		if m.focus==1 && i==m.varCursor {line=selected.Render(line)}
-		b:=block{lines:[]string{line}}
+		b:=block{}
+		if r.Depth==0 {
+			scope:=scopeLabel(r)
+			if scope!=lastScope {b.lines=append(b.lines,muted.Render(clip("  "+scope+" · 名称 / 类型 / 值",w)));lastScope=scope}
+		}
+		b.lines=append(b.lines,line)
 		if aggregate && r.Collapsed && r.Depth==0 {
 			if rangeText:=m.rangeLabel(r);rangeText!="" {b.lines=append(b.lines,muted.Render(clip("  "+rangeText,w)))}
 			b.lines=append(b.lines,m.dataPreview(r,all,w)...)
@@ -216,4 +224,16 @@ func (m Model) variablePanel(w,h int) string {
 	// lipgloss measures ANSI strings by terminal cells.
 	for i,line:=range lines {if lipgloss.Width(line)>w {lines[i]=clip(SafeText(line,false),w)}}
 	return fixed(lines,w,h)
+}
+
+func scopeLabel(r VariableRow) string {
+	switch r.Raw.Scope {
+	case observer.ParameterScope:return "参数"
+	case observer.GlobalScope:return "全局变量"
+	case observer.FileStaticScope:return "文件静态变量"
+	case observer.FunctionStaticScope:return "函数静态变量"
+	case observer.LocalScope:return "局部变量"
+	}
+	if r.Parent=="globals" {return "全局变量"}
+	return "当前帧变量"
 }

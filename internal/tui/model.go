@@ -34,6 +34,8 @@ type Model struct {
 	history []HistoryEntry
 	rangeInput [2]string
 	rangeField int
+	displayInput [4]string
+	displayFields int
 	fullArrays map[string]bool
 	manualRanges map[string]FocusRange
 	maximized bool
