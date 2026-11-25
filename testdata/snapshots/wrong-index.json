@@ -1,0 +1,977 @@
+{
+  "synthetic": true,
+  "description": "Selected representative pauses (not every executed source line); intentionally wrong array index; only first three elements recorded.",
+  "stdin": "2 7\n0 5\n",
+  "expected_stdout": "15 20 37 40\n",
+  "events": [
+    {
+      "kind": "started",
+      "session": {
+        "backend": "synthetic",
+        "sources": [
+          {
+            "path": "main.c",
+            "text": "#include <stdio.h>\n\ntypedef struct { int score; } Record;\nint main(void) {\n    Record a[4] = {{10}, {20}, {30}, {40}};\n    int index, x;\n    for (int i = 0; i < 2; ++i) {\n        scanf(\"%d%d\", &index, &x);\n        a[i].score += x; /* intended: a[index].score += x */\n    }\n    printf(\"%d %d %d %d\\n\", a[0].score, a[1].score, a[2].score, a[3].score);\n    return 0;\n}\n"
+          }
+        ],
+        "capabilities": {
+          "globals": false,
+          "stable_identity": true,
+          "input_consumption": false,
+          "user_callbacks": false
+        }
+      }
+    },
+    {
+      "kind": "snapshot",
+      "snapshot": {
+        "id": 0,
+        "location": {
+          "file": "main.c",
+          "line": 8,
+          "function": "main"
+        },
+        "frames": [
+          {
+            "id": "call-main-1",
+            "identity_reliable": true,
+            "location": {
+              "file": "main.c",
+              "line": 8,
+              "function": "main"
+            },
+            "variables": [
+              {
+                "id": "main:array",
+                "identity_reliable": true,
+                "name": "a",
+                "type": "Record[4]",
+                "kind": "array",
+                "status": "observed",
+                "array_length": 4,
+                "children_complete": false,
+                "children": [
+                  {
+                    "id": "main:a:0",
+                    "identity_reliable": true,
+                    "name": "[0]",
+                    "index": 0,
+                    "type": "Record",
+                    "kind": "struct",
+                    "status": "observed",
+                    "children_complete": true,
+                    "children": [
+                      {
+                        "id": "main:a:0:score",
+                        "identity_reliable": true,
+                        "name": "score",
+                        "type": "int",
+                        "kind": "scalar",
+                        "status": "observed",
+                        "value": "10",
+                        "children_complete": true
+                      }
+                    ]
+                  },
+                  {
+                    "id": "main:a:1",
+                    "identity_reliable": true,
+                    "name": "[1]",
+                    "index": 1,
+                    "type": "Record",
+                    "kind": "struct",
+                    "status": "observed",
+                    "children_complete": true,
+                    "children": [
+                      {
+                        "id": "main:a:1:score",
+                        "identity_reliable": true,
+                        "name": "score",
+                        "type": "int",
+                        "kind": "scalar",
+                        "status": "observed",
+                        "value": "20",
+                        "children_complete": true
+                      }
+                    ]
+                  },
+                  {
+                    "id": "main:a:2",
+                    "identity_reliable": true,
+                    "name": "[2]",
+                    "index": 2,
+                    "type": "Record",
+                    "kind": "struct",
+                    "status": "observed",
+                    "children_complete": true,
+                    "children": [
+                      {
+                        "id": "main:a:2:score",
+                        "identity_reliable": true,
+                        "name": "score",
+                        "type": "int",
+                        "kind": "scalar",
+                        "status": "observed",
+                        "value": "30",
+                        "children_complete": true
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "main:index",
+                "identity_reliable": true,
+                "name": "index",
+                "type": "int",
+                "kind": "scalar",
+                "status": "not_captured",
+                "children_complete": true
+              },
+              {
+                "id": "main:x",
+                "identity_reliable": true,
+                "name": "x",
+                "type": "int",
+                "kind": "scalar",
+                "status": "not_captured",
+                "children_complete": true
+              },
+              {
+                "id": "main:loop:i",
+                "identity_reliable": true,
+                "name": "i",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "value": "0",
+                "children_complete": true
+              }
+            ]
+          }
+        ],
+        "output": {
+          "stdout": "",
+          "stderr": ""
+        }
+      }
+    },
+    {
+      "kind": "snapshot",
+      "snapshot": {
+        "id": 1,
+        "location": {
+          "file": "main.c",
+          "line": 9,
+          "function": "main"
+        },
+        "frames": [
+          {
+            "id": "call-main-1",
+            "identity_reliable": true,
+            "location": {
+              "file": "main.c",
+              "line": 9,
+              "function": "main"
+            },
+            "variables": [
+              {
+                "id": "main:array",
+                "identity_reliable": true,
+                "name": "a",
+                "type": "Record[4]",
+                "kind": "array",
+                "status": "observed",
+                "array_length": 4,
+                "children_complete": false,
+                "children": [
+                  {
+                    "id": "main:a:0",
+                    "identity_reliable": true,
+                    "name": "[0]",
+                    "index": 0,
+                    "type": "Record",
+                    "kind": "struct",
+                    "status": "observed",
+                    "children_complete": true,
+                    "children": [
+                      {
+                        "id": "main:a:0:score",
+                        "identity_reliable": true,
+                        "name": "score",
+                        "type": "int",
+                        "kind": "scalar",
+                        "status": "observed",
+                        "value": "10",
+                        "children_complete": true
+                      }
+                    ]
+                  },
+                  {
+                    "id": "main:a:1",
+                    "identity_reliable": true,
+                    "name": "[1]",
+                    "index": 1,
+                    "type": "Record",
+                    "kind": "struct",
+                    "status": "observed",
+                    "children_complete": true,
+                    "children": [
+                      {
+                        "id": "main:a:1:score",
+                        "identity_reliable": true,
+                        "name": "score",
+                        "type": "int",
+                        "kind": "scalar",
+                        "status": "observed",
+                        "value": "20",
+                        "children_complete": true
+                      }
+                    ]
+                  },
+                  {
+                    "id": "main:a:2",
+                    "identity_reliable": true,
+                    "name": "[2]",
+                    "index": 2,
+                    "type": "Record",
+                    "kind": "struct",
+                    "status": "observed",
+                    "children_complete": true,
+                    "children": [
+                      {
+                        "id": "main:a:2:score",
+                        "identity_reliable": true,
+                        "name": "score",
+                        "type": "int",
+                        "kind": "scalar",
+                        "status": "observed",
+                        "value": "30",
+                        "children_complete": true
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "main:index",
+                "identity_reliable": true,
+                "name": "index",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "value": "2",
+                "children_complete": true
+              },
+              {
+                "id": "main:x",
+                "identity_reliable": true,
+                "name": "x",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "value": "7",
+                "children_complete": true
+              },
+              {
+                "id": "main:loop:i",
+                "identity_reliable": true,
+                "name": "i",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "value": "0",
+                "children_complete": true
+              }
+            ]
+          }
+        ],
+        "output": {
+          "stdout": "",
+          "stderr": ""
+        }
+      }
+    },
+    {
+      "kind": "snapshot",
+      "snapshot": {
+        "id": 2,
+        "location": {
+          "file": "main.c",
+          "line": 7,
+          "function": "main"
+        },
+        "frames": [
+          {
+            "id": "call-main-1",
+            "identity_reliable": true,
+            "location": {
+              "file": "main.c",
+              "line": 7,
+              "function": "main"
+            },
+            "variables": [
+              {
+                "id": "main:array",
+                "identity_reliable": true,
+                "name": "a",
+                "type": "Record[4]",
+                "kind": "array",
+                "status": "observed",
+                "array_length": 4,
+                "children_complete": false,
+                "children": [
+                  {
+                    "id": "main:a:0",
+                    "identity_reliable": true,
+                    "name": "[0]",
+                    "index": 0,
+                    "type": "Record",
+                    "kind": "struct",
+                    "status": "observed",
+                    "children_complete": true,
+                    "children": [
+                      {
+                        "id": "main:a:0:score",
+                        "identity_reliable": true,
+                        "name": "score",
+                        "type": "int",
+                        "kind": "scalar",
+                        "status": "observed",
+                        "value": "17",
+                        "children_complete": true
+                      }
+                    ]
+                  },
+                  {
+                    "id": "main:a:1",
+                    "identity_reliable": true,
+                    "name": "[1]",
+                    "index": 1,
+                    "type": "Record",
+                    "kind": "struct",
+                    "status": "observed",
+                    "children_complete": true,
+                    "children": [
+                      {
+                        "id": "main:a:1:score",
+                        "identity_reliable": true,
+                        "name": "score",
+                        "type": "int",
+                        "kind": "scalar",
+                        "status": "observed",
+                        "value": "20",
+                        "children_complete": true
+                      }
+                    ]
+                  },
+                  {
+                    "id": "main:a:2",
+                    "identity_reliable": true,
+                    "name": "[2]",
+                    "index": 2,
+                    "type": "Record",
+                    "kind": "struct",
+                    "status": "observed",
+                    "children_complete": true,
+                    "children": [
+                      {
+                        "id": "main:a:2:score",
+                        "identity_reliable": true,
+                        "name": "score",
+                        "type": "int",
+                        "kind": "scalar",
+                        "status": "observed",
+                        "value": "30",
+                        "children_complete": true
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "main:index",
+                "identity_reliable": true,
+                "name": "index",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "value": "2",
+                "children_complete": true
+              },
+              {
+                "id": "main:x",
+                "identity_reliable": true,
+                "name": "x",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "value": "7",
+                "children_complete": true
+              },
+              {
+                "id": "main:loop:i",
+                "identity_reliable": true,
+                "name": "i",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "value": "0",
+                "children_complete": true
+              }
+            ]
+          }
+        ],
+        "output": {
+          "stdout": "",
+          "stderr": ""
+        }
+      }
+    },
+    {
+      "kind": "snapshot",
+      "snapshot": {
+        "id": 3,
+        "location": {
+          "file": "main.c",
+          "line": 8,
+          "function": "main"
+        },
+        "frames": [
+          {
+            "id": "call-main-1",
+            "identity_reliable": true,
+            "location": {
+              "file": "main.c",
+              "line": 8,
+              "function": "main"
+            },
+            "variables": [
+              {
+                "id": "main:array",
+                "identity_reliable": true,
+                "name": "a",
+                "type": "Record[4]",
+                "kind": "array",
+                "status": "observed",
+                "array_length": 4,
+                "children_complete": false,
+                "children": [
+                  {
+                    "id": "main:a:0",
+                    "identity_reliable": true,
+                    "name": "[0]",
+                    "index": 0,
+                    "type": "Record",
+                    "kind": "struct",
+                    "status": "observed",
+                    "children_complete": true,
+                    "children": [
+                      {
+                        "id": "main:a:0:score",
+                        "identity_reliable": true,
+                        "name": "score",
+                        "type": "int",
+                        "kind": "scalar",
+                        "status": "observed",
+                        "value": "17",
+                        "children_complete": true
+                      }
+                    ]
+                  },
+                  {
+                    "id": "main:a:1",
+                    "identity_reliable": true,
+                    "name": "[1]",
+                    "index": 1,
+                    "type": "Record",
+                    "kind": "struct",
+                    "status": "observed",
+                    "children_complete": true,
+                    "children": [
+                      {
+                        "id": "main:a:1:score",
+                        "identity_reliable": true,
+                        "name": "score",
+                        "type": "int",
+                        "kind": "scalar",
+                        "status": "observed",
+                        "value": "20",
+                        "children_complete": true
+                      }
+                    ]
+                  },
+                  {
+                    "id": "main:a:2",
+                    "identity_reliable": true,
+                    "name": "[2]",
+                    "index": 2,
+                    "type": "Record",
+                    "kind": "struct",
+                    "status": "observed",
+                    "children_complete": true,
+                    "children": [
+                      {
+                        "id": "main:a:2:score",
+                        "identity_reliable": true,
+                        "name": "score",
+                        "type": "int",
+                        "kind": "scalar",
+                        "status": "observed",
+                        "value": "30",
+                        "children_complete": true
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "main:index",
+                "identity_reliable": true,
+                "name": "index",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "value": "2",
+                "children_complete": true
+              },
+              {
+                "id": "main:x",
+                "identity_reliable": true,
+                "name": "x",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "value": "7",
+                "children_complete": true
+              },
+              {
+                "id": "main:loop:i",
+                "identity_reliable": true,
+                "name": "i",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "value": "1",
+                "children_complete": true
+              }
+            ]
+          }
+        ],
+        "output": {
+          "stdout": "",
+          "stderr": ""
+        }
+      }
+    },
+    {
+      "kind": "snapshot",
+      "snapshot": {
+        "id": 4,
+        "location": {
+          "file": "main.c",
+          "line": 9,
+          "function": "main"
+        },
+        "frames": [
+          {
+            "id": "call-main-1",
+            "identity_reliable": true,
+            "location": {
+              "file": "main.c",
+              "line": 9,
+              "function": "main"
+            },
+            "variables": [
+              {
+                "id": "main:array",
+                "identity_reliable": true,
+                "name": "a",
+                "type": "Record[4]",
+                "kind": "array",
+                "status": "observed",
+                "array_length": 4,
+                "children_complete": false,
+                "children": [
+                  {
+                    "id": "main:a:0",
+                    "identity_reliable": true,
+                    "name": "[0]",
+                    "index": 0,
+                    "type": "Record",
+                    "kind": "struct",
+                    "status": "observed",
+                    "children_complete": true,
+                    "children": [
+                      {
+                        "id": "main:a:0:score",
+                        "identity_reliable": true,
+                        "name": "score",
+                        "type": "int",
+                        "kind": "scalar",
+                        "status": "observed",
+                        "value": "17",
+                        "children_complete": true
+                      }
+                    ]
+                  },
+                  {
+                    "id": "main:a:1",
+                    "identity_reliable": true,
+                    "name": "[1]",
+                    "index": 1,
+                    "type": "Record",
+                    "kind": "struct",
+                    "status": "observed",
+                    "children_complete": true,
+                    "children": [
+                      {
+                        "id": "main:a:1:score",
+                        "identity_reliable": true,
+                        "name": "score",
+                        "type": "int",
+                        "kind": "scalar",
+                        "status": "observed",
+                        "value": "20",
+                        "children_complete": true
+                      }
+                    ]
+                  },
+                  {
+                    "id": "main:a:2",
+                    "identity_reliable": true,
+                    "name": "[2]",
+                    "index": 2,
+                    "type": "Record",
+                    "kind": "struct",
+                    "status": "observed",
+                    "children_complete": true,
+                    "children": [
+                      {
+                        "id": "main:a:2:score",
+                        "identity_reliable": true,
+                        "name": "score",
+                        "type": "int",
+                        "kind": "scalar",
+                        "status": "observed",
+                        "value": "30",
+                        "children_complete": true
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "main:index",
+                "identity_reliable": true,
+                "name": "index",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "value": "0",
+                "children_complete": true
+              },
+              {
+                "id": "main:x",
+                "identity_reliable": true,
+                "name": "x",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "value": "5",
+                "children_complete": true
+              },
+              {
+                "id": "main:loop:i",
+                "identity_reliable": true,
+                "name": "i",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "value": "1",
+                "children_complete": true
+              }
+            ]
+          }
+        ],
+        "output": {
+          "stdout": "",
+          "stderr": ""
+        }
+      }
+    },
+    {
+      "kind": "snapshot",
+      "snapshot": {
+        "id": 5,
+        "location": {
+          "file": "main.c",
+          "line": 7,
+          "function": "main"
+        },
+        "frames": [
+          {
+            "id": "call-main-1",
+            "identity_reliable": true,
+            "location": {
+              "file": "main.c",
+              "line": 7,
+              "function": "main"
+            },
+            "variables": [
+              {
+                "id": "main:array",
+                "identity_reliable": true,
+                "name": "a",
+                "type": "Record[4]",
+                "kind": "array",
+                "status": "observed",
+                "array_length": 4,
+                "children_complete": false,
+                "children": [
+                  {
+                    "id": "main:a:0",
+                    "identity_reliable": true,
+                    "name": "[0]",
+                    "index": 0,
+                    "type": "Record",
+                    "kind": "struct",
+                    "status": "observed",
+                    "children_complete": true,
+                    "children": [
+                      {
+                        "id": "main:a:0:score",
+                        "identity_reliable": true,
+                        "name": "score",
+                        "type": "int",
+                        "kind": "scalar",
+                        "status": "observed",
+                        "value": "17",
+                        "children_complete": true
+                      }
+                    ]
+                  },
+                  {
+                    "id": "main:a:1",
+                    "identity_reliable": true,
+                    "name": "[1]",
+                    "index": 1,
+                    "type": "Record",
+                    "kind": "struct",
+                    "status": "observed",
+                    "children_complete": true,
+                    "children": [
+                      {
+                        "id": "main:a:1:score",
+                        "identity_reliable": true,
+                        "name": "score",
+                        "type": "int",
+                        "kind": "scalar",
+                        "status": "observed",
+                        "value": "25",
+                        "children_complete": true
+                      }
+                    ]
+                  },
+                  {
+                    "id": "main:a:2",
+                    "identity_reliable": true,
+                    "name": "[2]",
+                    "index": 2,
+                    "type": "Record",
+                    "kind": "struct",
+                    "status": "observed",
+                    "children_complete": true,
+                    "children": [
+                      {
+                        "id": "main:a:2:score",
+                        "identity_reliable": true,
+                        "name": "score",
+                        "type": "int",
+                        "kind": "scalar",
+                        "status": "observed",
+                        "value": "30",
+                        "children_complete": true
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "main:index",
+                "identity_reliable": true,
+                "name": "index",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "value": "0",
+                "children_complete": true
+              },
+              {
+                "id": "main:x",
+                "identity_reliable": true,
+                "name": "x",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "value": "5",
+                "children_complete": true
+              },
+              {
+                "id": "main:loop:i",
+                "identity_reliable": true,
+                "name": "i",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "value": "1",
+                "children_complete": true
+              }
+            ]
+          }
+        ],
+        "output": {
+          "stdout": "",
+          "stderr": ""
+        }
+      }
+    },
+    {
+      "kind": "snapshot",
+      "snapshot": {
+        "id": 6,
+        "location": {
+          "file": "main.c",
+          "line": 11,
+          "function": "main"
+        },
+        "frames": [
+          {
+            "id": "call-main-1",
+            "identity_reliable": true,
+            "location": {
+              "file": "main.c",
+              "line": 11,
+              "function": "main"
+            },
+            "variables": [
+              {
+                "id": "main:array",
+                "identity_reliable": true,
+                "name": "a",
+                "type": "Record[4]",
+                "kind": "array",
+                "status": "observed",
+                "array_length": 4,
+                "children_complete": false,
+                "children": [
+                  {
+                    "id": "main:a:0",
+                    "identity_reliable": true,
+                    "name": "[0]",
+                    "index": 0,
+                    "type": "Record",
+                    "kind": "struct",
+                    "status": "observed",
+                    "children_complete": true,
+                    "children": [
+                      {
+                        "id": "main:a:0:score",
+                        "identity_reliable": true,
+                        "name": "score",
+                        "type": "int",
+                        "kind": "scalar",
+                        "status": "observed",
+                        "value": "17",
+                        "children_complete": true
+                      }
+                    ]
+                  },
+                  {
+                    "id": "main:a:1",
+                    "identity_reliable": true,
+                    "name": "[1]",
+                    "index": 1,
+                    "type": "Record",
+                    "kind": "struct",
+                    "status": "observed",
+                    "children_complete": true,
+                    "children": [
+                      {
+                        "id": "main:a:1:score",
+                        "identity_reliable": true,
+                        "name": "score",
+                        "type": "int",
+                        "kind": "scalar",
+                        "status": "observed",
+                        "value": "25",
+                        "children_complete": true
+                      }
+                    ]
+                  },
+                  {
+                    "id": "main:a:2",
+                    "identity_reliable": true,
+                    "name": "[2]",
+                    "index": 2,
+                    "type": "Record",
+                    "kind": "struct",
+                    "status": "observed",
+                    "children_complete": true,
+                    "children": [
+                      {
+                        "id": "main:a:2:score",
+                        "identity_reliable": true,
+                        "name": "score",
+                        "type": "int",
+                        "kind": "scalar",
+                        "status": "observed",
+                        "value": "30",
+                        "children_complete": true
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "main:index",
+                "identity_reliable": true,
+                "name": "index",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "value": "0",
+                "children_complete": true
+              },
+              {
+                "id": "main:x",
+                "identity_reliable": true,
+                "name": "x",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "value": "5",
+                "children_complete": true
+              }
+            ]
+          }
+        ],
+        "output": {
+          "stdout": "",
+          "stderr": ""
+        }
+      }
+    },
+    {
+      "kind": "finished",
+      "result": {
+        "reason": "exited",
+        "exit_code": 0,
+        "output": {
+          "stdout": "MTcgMjUgMzAgNDAK",
+          "stderr": ""
+        }
+      }
+    }
+  ]
+}
