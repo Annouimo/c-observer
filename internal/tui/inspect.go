@@ -5,7 +5,6 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
-	"strings"
 
 	"github.com/Annouimo/c-observer/internal/observer"
 )
