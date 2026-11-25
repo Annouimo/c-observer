@@ -47,10 +47,30 @@ func ValidateRun(run observer.RunResult) error {
 type Replay struct {
 	Run observer.RunResult
 	Position int
+	Frame int // selected stack frame; 0 is the executing frame
+	Index *HistoryIndex
 }
 
 func (r *Replay) Move(delta int) { r.Seek(r.Position + delta) }
-func (r *Replay) Seek(pos int) { r.Position = max(0, min(pos, len(r.Run.Snapshots))) }
+func (r *Replay) Seek(pos int) {
+	var frameID string
+	if s:=r.Current();s!=nil && r.Frame>=0 && r.Frame<len(s.Frames) && s.Frames[r.Frame].IdentityReliable {frameID=s.Frames[r.Frame].ID}
+	r.Position=max(0,min(pos,len(r.Run.Snapshots)))
+	r.Frame=0
+	if frameID!="" {
+		if s:=r.Current();s!=nil {for i,f:=range s.Frames {if f.IdentityReliable && f.ID==frameID {r.Frame=i;break}}}
+	}
+}
+func (r Replay) ViewedLocation() observer.SourceLocation {
+	if s:=r.Current();s!=nil {
+		if r.Frame>0 && r.Frame<len(s.Frames) {return s.Frames[r.Frame].Location}
+		return s.Location
+	}
+	return observer.SourceLocation{}
+}
+func NewReplay(run observer.RunResult) Replay {
+	return Replay{Run:run,Index:BuildHistoryIndex(run)}
+}
 func (r Replay) End() bool { return r.Position == len(r.Run.Snapshots) }
 func (r Replay) Current() *observer.Snapshot {
 	if r.Position < 0 || r.Position >= len(r.Run.Snapshots) { return nil }
@@ -155,7 +175,7 @@ func (r Replay) Rows(collapsed map[string]bool) []VariableRow {
 	}
 	for i, frame := range s.Frames {
 		// The first version shows the active frame; callers can add frame selection later.
-		if i>0 { break }
+		if i!=r.Frame { continue }
 		var old []observer.Variable
 		reliable := false
 		if p!=nil && frame.ID!="" && frame.IdentityReliable {
@@ -163,7 +183,7 @@ func (r Replay) Rows(collapsed map[string]bool) []VariableRow {
 				if f.ID==frame.ID && f.IdentityReliable { old=f.Variables; reliable=true; break }
 			}
 		}
-		walk(frame.Variables,old,"frame:"+frame.ID,"",0,reliable,frame.ID!="" && frame.IdentityReliable)
+		walk(frame.Variables,old,fmt.Sprintf("frame:%q",frame.ID),"",0,reliable,frame.ID!="" && frame.IdentityReliable)
 	}
 	var oldGlobals []observer.Variable
 	if p!=nil { oldGlobals=p.Globals }
