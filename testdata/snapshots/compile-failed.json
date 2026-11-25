@@ -1,0 +1,26 @@
+{
+  "synthetic": true,
+  "stdin": "",
+  "run": {
+    "session": {
+      "backend": "synthetic",
+      "sources": [],
+      "capabilities": {
+        "globals": false,
+        "explicit_stops": false
+      }
+    },
+    "snapshots": [],
+    "diagnostics": [
+      {
+        "severity": "error",
+        "message": "expected expression"
+      }
+    ],
+    "reason": "compile_failed",
+    "output": {
+      "stdout": "",
+      "stderr": ""
+    }
+  }
+}

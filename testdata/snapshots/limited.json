@@ -2,28 +2,22 @@
   "synthetic": true,
   "description": "Deliberately incomplete history; collection limit reached, no final program output.",
   "stdin": "2 7\n0 5\n",
-  "events": [
-    {
-      "kind": "started",
-      "session": {
-        "backend": "synthetic",
-        "sources": [
-          {
-            "path": "main.c",
-            "text": "#include <stdio.h>\n\ntypedef struct { int score; } Record;\nint main(void) {\n    Record a[4] = {{10}, {20}, {30}, {40}};\n    int index, x;\n    for (int i = 0; i < 2; ++i) {\n        scanf(\"%d%d\", &index, &x);\n        a[i].score += x; /* intended: a[index].score += x */\n    }\n    printf(\"%d %d %d %d\\n\", a[0].score, a[1].score, a[2].score, a[3].score);\n    return 0;\n}\n"
-          }
-        ],
-        "capabilities": {
-          "globals": false,
-          "stable_identity": true,
-          "input_consumption": false,
-          "user_callbacks": false
+  "run": {
+    "session": {
+      "backend": "synthetic",
+      "sources": [
+        {
+          "path": "main.c",
+          "text": "#include <stdio.h>\n\ntypedef struct { int score; } Record;\nint main(void) {\n    Record a[4] = {{10}, {20}, {30}, {40}};\n    int index, x;\n    for (int i = 0; i < 2; ++i) {\n        scanf(\"%d%d\", &index, &x);\n        a[i].score += x; /* intended: a[index].score += x */\n    }\n    printf(\"%d %d %d %d\\n\", a[0].score, a[1].score, a[2].score, a[3].score);\n    return 0;\n}\n"
         }
+      ],
+      "capabilities": {
+        "globals": false,
+        "explicit_stops": false
       }
     },
-    {
-      "kind": "snapshot",
-      "snapshot": {
+    "snapshots": [
+      {
         "id": 0,
         "location": {
           "file": "main.c",
@@ -149,15 +143,12 @@
             ]
           }
         ],
-        "output": {
-          "stdout": "",
-          "stderr": ""
+        "output_offsets": {
+          "stdout_bytes": 0,
+          "stderr_bytes": 0
         }
-      }
-    },
-    {
-      "kind": "snapshot",
-      "snapshot": {
+      },
+      {
         "id": 1,
         "location": {
           "file": "main.c",
@@ -285,15 +276,12 @@
             ]
           }
         ],
-        "output": {
-          "stdout": "",
-          "stderr": ""
+        "output_offsets": {
+          "stdout_bytes": 0,
+          "stderr_bytes": 0
         }
-      }
-    },
-    {
-      "kind": "snapshot",
-      "snapshot": {
+      },
+      {
         "id": 2,
         "location": {
           "file": "main.c",
@@ -421,22 +409,17 @@
             ]
           }
         ],
-        "output": {
-          "stdout": "",
-          "stderr": ""
+        "output_offsets": {
+          "stdout_bytes": 0,
+          "stderr_bytes": 0
         }
       }
-    },
-    {
-      "kind": "finished",
-      "result": {
-        "reason": "limit_reached",
-        "message": "Snapshot limit reached; program did not finish.",
-        "output": {
-          "stdout": "",
-          "stderr": ""
-        }
-      }
+    ],
+    "reason": "limit_reached",
+    "message": "Snapshot limit reached; program did not finish.",
+    "output": {
+      "stdout": "",
+      "stderr": ""
     }
-  ]
+  }
 }

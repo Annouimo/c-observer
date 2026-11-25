@@ -3,28 +3,22 @@
   "description": "Selected representative pauses (not every executed source line); intentionally wrong array index; only first three elements recorded.",
   "stdin": "2 7\n0 5\n",
   "expected_stdout": "15 20 37 40\n",
-  "events": [
-    {
-      "kind": "started",
-      "session": {
-        "backend": "synthetic",
-        "sources": [
-          {
-            "path": "main.c",
-            "text": "#include <stdio.h>\n\ntypedef struct { int score; } Record;\nint main(void) {\n    Record a[4] = {{10}, {20}, {30}, {40}};\n    int index, x;\n    for (int i = 0; i < 2; ++i) {\n        scanf(\"%d%d\", &index, &x);\n        a[i].score += x; /* intended: a[index].score += x */\n    }\n    printf(\"%d %d %d %d\\n\", a[0].score, a[1].score, a[2].score, a[3].score);\n    return 0;\n}\n"
-          }
-        ],
-        "capabilities": {
-          "globals": false,
-          "stable_identity": true,
-          "input_consumption": false,
-          "user_callbacks": false
+  "run": {
+    "session": {
+      "backend": "synthetic",
+      "sources": [
+        {
+          "path": "main.c",
+          "text": "#include <stdio.h>\n\ntypedef struct { int score; } Record;\nint main(void) {\n    Record a[4] = {{10}, {20}, {30}, {40}};\n    int index, x;\n    for (int i = 0; i < 2; ++i) {\n        scanf(\"%d%d\", &index, &x);\n        a[i].score += x; /* intended: a[index].score += x */\n    }\n    printf(\"%d %d %d %d\\n\", a[0].score, a[1].score, a[2].score, a[3].score);\n    return 0;\n}\n"
         }
+      ],
+      "capabilities": {
+        "globals": false,
+        "explicit_stops": false
       }
     },
-    {
-      "kind": "snapshot",
-      "snapshot": {
+    "snapshots": [
+      {
         "id": 0,
         "location": {
           "file": "main.c",
@@ -150,15 +144,12 @@
             ]
           }
         ],
-        "output": {
-          "stdout": "",
-          "stderr": ""
+        "output_offsets": {
+          "stdout_bytes": 0,
+          "stderr_bytes": 0
         }
-      }
-    },
-    {
-      "kind": "snapshot",
-      "snapshot": {
+      },
+      {
         "id": 1,
         "location": {
           "file": "main.c",
@@ -286,15 +277,12 @@
             ]
           }
         ],
-        "output": {
-          "stdout": "",
-          "stderr": ""
+        "output_offsets": {
+          "stdout_bytes": 0,
+          "stderr_bytes": 0
         }
-      }
-    },
-    {
-      "kind": "snapshot",
-      "snapshot": {
+      },
+      {
         "id": 2,
         "location": {
           "file": "main.c",
@@ -422,15 +410,12 @@
             ]
           }
         ],
-        "output": {
-          "stdout": "",
-          "stderr": ""
+        "output_offsets": {
+          "stdout_bytes": 0,
+          "stderr_bytes": 0
         }
-      }
-    },
-    {
-      "kind": "snapshot",
-      "snapshot": {
+      },
+      {
         "id": 3,
         "location": {
           "file": "main.c",
@@ -558,15 +543,12 @@
             ]
           }
         ],
-        "output": {
-          "stdout": "",
-          "stderr": ""
+        "output_offsets": {
+          "stdout_bytes": 0,
+          "stderr_bytes": 0
         }
-      }
-    },
-    {
-      "kind": "snapshot",
-      "snapshot": {
+      },
+      {
         "id": 4,
         "location": {
           "file": "main.c",
@@ -694,15 +676,12 @@
             ]
           }
         ],
-        "output": {
-          "stdout": "",
-          "stderr": ""
+        "output_offsets": {
+          "stdout_bytes": 0,
+          "stderr_bytes": 0
         }
-      }
-    },
-    {
-      "kind": "snapshot",
-      "snapshot": {
+      },
+      {
         "id": 5,
         "location": {
           "file": "main.c",
@@ -830,15 +809,12 @@
             ]
           }
         ],
-        "output": {
-          "stdout": "",
-          "stderr": ""
+        "output_offsets": {
+          "stdout_bytes": 0,
+          "stderr_bytes": 0
         }
-      }
-    },
-    {
-      "kind": "snapshot",
-      "snapshot": {
+      },
+      {
         "id": 6,
         "location": {
           "file": "main.c",
@@ -956,22 +932,17 @@
             ]
           }
         ],
-        "output": {
-          "stdout": "",
-          "stderr": ""
+        "output_offsets": {
+          "stdout_bytes": 0,
+          "stderr_bytes": 0
         }
       }
-    },
-    {
-      "kind": "finished",
-      "result": {
-        "reason": "exited",
-        "exit_code": 0,
-        "output": {
-          "stdout": "MTcgMjUgMzAgNDAK",
-          "stderr": ""
-        }
-      }
+    ],
+    "reason": "exited",
+    "exit_code": 0,
+    "output": {
+      "stdout": "MTcgMjUgMzAgNDAK",
+      "stderr": ""
     }
-  ]
+  }
 }

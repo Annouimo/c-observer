@@ -1,0 +1,75 @@
+{
+  "synthetic": true,
+  "stdin": "",
+  "run": {
+    "session": {
+      "backend": "synthetic",
+      "sources": [
+        {
+          "path": "main.c",
+          "text": "int main(void) {\n    int records[10010] = {0};\n    records[9000] = 42;\n    for (;;) {}\n}\n"
+        }
+      ],
+      "capabilities": {
+        "globals": false,
+        "explicit_stops": false
+      }
+    },
+    "snapshots": [
+      {
+        "id": 0,
+        "location": {
+          "file": "main.c",
+          "line": 4
+        },
+        "frames": [
+          {
+            "id": "main-1",
+            "identity_reliable": true,
+            "location": {
+              "file": "main.c",
+              "line": 4
+            },
+            "variables": [
+              {
+                "id": "records",
+                "identity_reliable": true,
+                "name": "records",
+                "scope": "local",
+                "type": "int [10010]",
+                "kind": "array",
+                "status": "observed",
+                "array_length": 10010,
+                "children_complete": false,
+                "children": [
+                  {
+                    "id": "records[9000]",
+                    "identity_reliable": true,
+                    "name": "[9000]",
+                    "index": 9000,
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "value": "42",
+                    "children_complete": true
+                  }
+                ]
+              }
+            ],
+            "variables_complete": true
+          }
+        ],
+        "globals_complete": false,
+        "output_offsets": {
+          "stdout_bytes": 0,
+          "stderr_bytes": 0
+        }
+      }
+    ],
+    "reason": "cancelled",
+    "output": {
+      "stdout": "",
+      "stderr": ""
+    }
+  }
+}
