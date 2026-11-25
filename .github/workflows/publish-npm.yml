@@ -118,7 +118,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-latest, macos-14]
+        runner: [ubuntu-latest, macos-15, macos-15-intel]
     runs-on: ${{ matrix.runner }}
     env:
       VERSION: ${{ inputs.version || '0.1.0-dev.1' }}
