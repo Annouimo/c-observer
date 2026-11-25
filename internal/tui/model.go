@@ -27,6 +27,8 @@ type Model struct {
 	started time.Time
 	err string
 	mode, notice string
+	standalone, settingUp bool
+	setup SetupState
 	target VariableRow
 	targetPosition, modalScroll, modalCol int
 	history []HistoryEntry
@@ -49,7 +51,7 @@ func NewLive(engine observer.Engine, config observer.LaunchConfig) Model {
 }
 
 func (m Model) Init() tea.Cmd {
-	if m.demo || m.engine==nil { return nil }
+	if m.demo || m.engine==nil || m.settingUp { return nil }
 	return func() tea.Msg { return startRun{} }
 }
 type startRun struct{}
@@ -86,6 +88,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model,tea.Cmd) {
 		m.mode,m.notice="",""
 		if len(msg.result.Snapshots)==0 {m.consoleTab=1}
 	case tea.KeyMsg:
+		if m.settingUp {cmd:=m.setupKey(msg);return m,cmd}
 		k:=msg.String()
 		if m.running {
 			if k=="esc" || k=="ctrl+c" || k=="q" {
@@ -114,6 +117,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model,tea.Cmd) {
 				m.targetPosition=m.replay.Position
 			}
 		case "esc","q","ctrl+c": return m,tea.Quit
+		case "e":
+			if m.standalone {m.setup=setupFrom(m.config);m.settingUp=true}
 		case "r":
 			if m.demo {m.replay.Seek(0);m.resetScroll();m.collapsed=map[string]bool{};break}
 			cmd:=m.start();return m,cmd
@@ -349,6 +354,7 @@ func (m Model) ending(w,h int) string {
 func (m Model) View() string {
 	w,h:=m.width,m.height
 	if w<45 || h<14 {return "请将终端调整至至少 45 × 14。Q 退出。"}
+	if m.settingUp {return m.setupView(w,h)}
 	title:="C Observer"
 	if m.demo {title+=" · 合成数据预览"}
 	if m.running {
@@ -384,6 +390,7 @@ func (m Model) View() string {
 	if m.focus==1 && !m.replay.End() {help="D 数据表  H 历史  A 范围  R 重跑/重置  Q 退出"}
 	if m.focus==2 {help="Enter 切换输入/实际输出/错误流/预期输出  Q 退出"}
 	if m.focus==0 && !m.replay.End() {help+="  H 本行历史"}
+	if m.standalone && m.focus==0 {help+="  E 修改配置"}
 	if m.notice!="" {help=m.notice}
 	return accent.Render(clip(title,w))+"\n"+body+"\n"+muted.Render(clip(pos+"  ·  "+reasonLabel(m.replay.Run.Reason),w))+"\n"+muted.Render(clip("←/→ 快照  ↑/↓ 选择  Tab 区域  Enter 展开/切换",w))+"\n"+muted.Render(clip(help,w))
 }
