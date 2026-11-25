@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -74,6 +75,9 @@ type SetupState struct {
 	withExpected bool
 	focus int // path, stdin, expected checkbox, expected text, start
 	message string
+	importing bool
+	importTarget int
+	importPath textField
 }
 
 // NewSetup starts with an editable launch form for standalone use.
@@ -111,7 +115,7 @@ func (s *SetupState) move(delta int) {
 }
 
 func (s SetupState) launchConfig(base observer.LaunchConfig) (observer.LaunchConfig,error) {
-	path:=strings.TrimSpace(s.path.text)
+	path:=expandHome(strings.TrimSpace(s.path.text))
 	if path=="" {return base,fmt.Errorf("请输入 C 源文件路径")}
 	if !filepath.IsAbs(path) && base.WorkDir!="" {path=filepath.Join(base.WorkDir,path)}
 	path,err:=filepath.Abs(path)
@@ -140,8 +144,18 @@ func (s SetupState) launchConfig(base observer.LaunchConfig) (observer.LaunchCon
 func (m *Model) setupKey(msg tea.KeyMsg) tea.Cmd {
 	s:=&m.setup
 	s.message=""
+	if s.importing {return m.importKey(msg)}
 	switch msg.String() {
-	case "esc","ctrl+c":return tea.Quit
+	case "esc":
+		if m.replay.Run.Reason!="" && !m.demo {m.settingUp=false;return nil}
+		return tea.Quit
+	case "ctrl+c":return tea.Quit
+	case "ctrl+f":
+		if s.focus==0 {s.completePath(m.config.WorkDir)}
+		return nil
+	case "ctrl+o":
+		if s.focus==1 || s.focus==3 {s.importing=true;s.importTarget=s.focus;s.importPath=newField("");return nil}
+		s.message="请先选择样例输入或预期输出。";return nil
 	case "tab":s.move(1);return nil
 	case "shift+tab":s.move(-1);return nil
 	case "ctrl+r":return m.launchSetup()
@@ -197,6 +211,7 @@ func fieldLines(f textField,active bool,w,h int) []string {
 
 func (m Model) setupView(w,h int) string {
 	s:=m.setup
+	if s.importing {return m.importView(w,h)}
 	lines:=[]string{accent.Render(clip("C Observer / 启动配置",w))}
 	if m.demo {lines[0]=accent.Render(clip("C Observer / 合成预览 · 启动配置",w))}
 	label:=func(i int,text string) string {
@@ -204,20 +219,96 @@ func (m Model) setupView(w,h int) string {
 		if s.focus==i {mark="> "}
 		return head(mark+text,s.focus==i,w)
 	}
-	lines=append(lines,label(0,"源文件路径（.c）"))
+	lines=append(lines,label(0,"源文件路径（.c） · Ctrl+F 补全"))
 	lines=append(lines,fieldLines(s.path,s.focus==0,w,1)...)
 	fieldH:=max(2,min(5,(h-10)/2))
-	lines=append(lines,label(1,"样例输入 · Enter 换行"))
+	lines=append(lines,label(1,"样例输入 · Enter 换行 / Ctrl+O 导入"))
 	lines=append(lines,fieldLines(s.input,s.focus==1,w,fieldH)...)
 	check:="[ ]"
 	if s.withExpected {check="[x]"}
 	lines=append(lines,label(2,check+" 提供预期输出（可选）"))
 	if s.withExpected {
-		lines=append(lines,label(3,"预期输出 · Enter 换行"))
+		lines=append(lines,label(3,"预期输出 · Enter 换行 / Ctrl+O 导入"))
 		lines=append(lines,fieldLines(s.expected,s.focus==3,w,fieldH)...)
 	}
 	lines=append(lines,label(4,"开始观察"))
 	if s.message!="" {lines=append(lines,warning.Render(clip(SafeText(s.message,false),w)))}
 	lines=append(lines,muted.Render(clip("Tab 切换  Ctrl+R 开始  Esc 退出",w)))
+	return fixed(lines,w,h)
+}
+
+func expandHome(path string) string {
+	if path=="~" || strings.HasPrefix(path,"~/") || strings.HasPrefix(path,"~\\") {
+		if home,err:=os.UserHomeDir();err==nil {
+			if len(path)==1 {return home}
+			return filepath.Join(home,path[2:])
+		}
+	}
+	return path
+}
+func resolvePath(base,path string) string {
+	path=expandHome(path)
+	if !filepath.IsAbs(path) && base!="" {return filepath.Join(base,path)}
+	return path
+}
+func (s *SetupState) completePath(base string) {
+	text:=expandHome(s.path.text)
+	dir,prefix:=filepath.Split(text)
+	resolved:=resolvePath(base,dir)
+	if resolved=="" {resolved="."}
+	entries,err:=os.ReadDir(resolved)
+	if err!=nil {s.message="无法列出路径："+SafeText(err.Error(),false);return}
+	var matches []string
+	for _,e:=range entries {
+		if strings.HasPrefix(e.Name(),prefix) && (e.IsDir() || strings.EqualFold(filepath.Ext(e.Name()),".c")) {matches=append(matches,e.Name())}
+	}
+	if len(matches)==0 {s.message="没有匹配的 C 源文件或目录。";return}
+	common:=[]rune(matches[0])
+	for _,name:=range matches[1:] {
+		r:=[]rune(name);n:=0
+		for n<len(common)&&n<len(r)&&common[n]==r[n] {n++}
+		common=common[:n]
+	}
+	completed:=dir+string(common)
+	if len(matches)==1 {
+		if info,err:=os.Stat(resolvePath(base,completed));err==nil && info.IsDir() {completed+=string(os.PathSeparator)}
+	}
+	s.path=newField(completed)
+	if len(matches)>1 {s.message=fmt.Sprintf("%d 个匹配项：%s",len(matches),strings.Join(matches[:min(3,len(matches))],"  "))}
+}
+const maxImportedSample=1<<20
+func readSample(path string) (string,error) {
+	f,err:=os.Open(path)
+	if err!=nil {return "",err}
+	defer f.Close()
+	info,err:=f.Stat()
+	if err!=nil || !info.Mode().IsRegular() {return "",fmt.Errorf("请选择普通文件")}
+	data,err:=io.ReadAll(io.LimitReader(f,maxImportedSample+1))
+	if err!=nil {return "",err}
+	if len(data)>maxImportedSample {return "",fmt.Errorf("样例文件超过 1 MiB 限制")}
+	return string(data),nil
+}
+func (m *Model) importKey(msg tea.KeyMsg) tea.Cmd {
+	s:=&m.setup
+	switch msg.String() {
+	case "esc":s.importing=false
+	case "ctrl+c":return tea.Quit
+	case "enter":
+		path:=strings.TrimSpace(s.importPath.text)
+		if path=="" {s.message="请输入样例文件路径";return nil}
+		text,err:=readSample(resolvePath(m.config.WorkDir,path))
+		if err!=nil {s.message="导入失败："+SafeText(err.Error(),false);return nil}
+		if s.importTarget==1 {s.input=newField(text)} else {s.expected=newField(text);s.withExpected=true}
+		s.importing=false;s.message="已导入样例文件（原始字节）"
+	default:s.importPath.edit(msg,false)
+	}
+	return nil
+}
+func (m Model) importView(w,h int) string {
+	s:=m.setup
+	lines:=[]string{accent.Render("C Observer / 导入样例"),"文件路径（相对工作目录或绝对路径）："}
+	lines=append(lines,fieldLines(s.importPath,true,w,2)...)
+	if s.message!="" {lines=append(lines,warning.Render(clip(s.message,w)))}
+	lines=append(lines,muted.Render("Enter 导入 · Esc 返回"))
 	return fixed(lines,w,h)
 }
