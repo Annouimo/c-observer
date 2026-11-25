@@ -152,7 +152,7 @@ func (c *capture) snapshot(frames []stackFrame) (observer.Snapshot, error) {
 						frame.VariablesComplete = false
 						break
 					}
-					v, err := c.variable(raw, fmt.Sprintf("%s:%s:%d", frame.ID, name, i), variableName(raw), 0, &nodes)
+					v, err := c.variable(raw, fmt.Sprintf("%s:%s:%d", frame.ID, name, i), variableName(raw), nil, 0, &nodes)
 					if err != nil {
 						return snapshot, err
 					}
@@ -224,7 +224,7 @@ func (c *capture) variables(ref, start, count int) ([]dapVariable, error) {
 	return body.Variables, err
 }
 
-func (c *capture) variable(raw dapVariable, id, path string, depth int, nodes *int) (observer.Variable, error) {
+func (c *capture) variable(raw dapVariable, id, path string, rootDeclaration *observer.SourceLocation, depth int, nodes *int) (observer.Variable, error) {
 	*nodes--
 	v := observer.Variable{ID: id, Name: raw.Name, Type: raw.Type, Kind: observer.Scalar, Status: observer.Observed, ChildrenComplete: true}
 	if raw.Value == nil {
@@ -241,6 +241,9 @@ func (c *capture) variable(raw dapVariable, id, path string, depth int, nodes *i
 	if raw.Extensions.Declaration != nil {
 		loc := c.location(raw.Extensions.Declaration.Path, raw.Extensions.Declaration.Line, "")
 		v.Declaration = &loc
+	}
+	if depth == 0 {
+		rootDeclaration = v.Declaration
 	}
 	isArray := false
 	if match := arrayType.FindStringSubmatch(raw.Type); match != nil {
@@ -274,11 +277,8 @@ func (c *capture) variable(raw dapVariable, id, path string, depth int, nodes *i
 	start, count := 0, *nodes
 	if isArray {
 		count = min(count, c.limits.MaxArrayElements)
-		for _, page := range c.config.ArrayRanges {
-			if page.Path == path && (page.Declaration == nil || sameDeclaration(page.Declaration, v.Declaration)) {
-				start, count = page.Start, min(count, page.Count)
-				break
-			}
+		if page := arrayRange(c.config.ArrayRanges, path, rootDeclaration); page != nil {
+			start, count = page.Start, min(count, page.Count)
 		}
 		if v.ArrayLength != nil {
 			count = min(count, *v.ArrayLength-start)
@@ -306,7 +306,7 @@ func (c *capture) variable(raw dapVariable, id, path string, depth int, nodes *i
 			index = &n
 			childPath = fmt.Sprintf("%s[%d]", path, n)
 		}
-		observed, err := c.variable(child, fmt.Sprintf("%s/%d", id, i), childPath, depth+1, nodes)
+		observed, err := c.variable(child, fmt.Sprintf("%s/%d", id, i), childPath, rootDeclaration, depth+1, nodes)
 		if err != nil {
 			return v, err
 		}
@@ -322,6 +322,26 @@ func (c *capture) variable(raw dapVariable, id, path string, depth int, nodes *i
 	}
 	v.ChildrenComplete = start == 0 && total != nil && len(v.Children) == *total
 	return v, nil
+}
+
+// A declaration-qualified selection overrides a name-only default. For
+// equally specific entries, use the most recently supplied selection.
+func arrayRange(ranges []observer.ArrayRange, path string, declaration *observer.SourceLocation) *observer.ArrayRange {
+	var fallback *observer.ArrayRange
+	for i := len(ranges) - 1; i >= 0; i-- {
+		page := &ranges[i]
+		if page.Path != path {
+			continue
+		}
+		if page.Declaration != nil {
+			if sameDeclaration(page.Declaration, declaration) {
+				return page
+			}
+		} else if fallback == nil {
+			fallback = page
+		}
+	}
+	return fallback
 }
 
 func sameDeclaration(a, b *observer.SourceLocation) bool {

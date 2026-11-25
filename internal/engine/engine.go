@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Annouimo/c-observer/internal/observer"
@@ -98,7 +99,12 @@ func (Engine) Run(ctx context.Context, config observer.LaunchConfig) (result obs
 		}
 	}()
 	exe := filepath.Join(temp, "program")
-	args := append(append([]string{"-std=c99"}, config.CompilerArgs...), "-g", "-O0", source, "-o", exe)
+	compilerArgs, err := compilerSDKArgs(ctx, runtime.GOOS, config.CompilerArgs)
+	if err != nil {
+		finishError(err)
+		return
+	}
+	args := append(append([]string{"-std=c99"}, compilerArgs...), "-g", "-O0", source, "-o", exe)
 	build := exec.CommandContext(ctx, compiler, args...)
 	build.Dir = dir
 	configureProcess(build)
@@ -137,6 +143,18 @@ func (Engine) Run(ctx context.Context, config observer.LaunchConfig) (result obs
 	result.Session.Backend = "lldb-dap"
 	defer func() {
 		result.CleanupError = d.close()
+		if result.Reason == observer.BackendFailed || result.Reason == observer.RequestTimedOut {
+			for _, entry := range []struct{ label, value string }{
+				{"LLDB console", d.console.String()},
+				{"LLDB stderr", d.stderr.String()},
+			} {
+				if msg := strings.TrimSpace(entry.value); msg != "" {
+					result.Diagnostics = append(result.Diagnostics, observer.Diagnostic{
+						Severity: "error", Message: entry.label + ": " + msg,
+					})
+				}
+			}
+		}
 		var err error
 		result.Output, err = readOutput(output, stderr, limits.MaxOutputBytes)
 		if err != nil {
@@ -171,6 +189,34 @@ func tool(ctx context.Context, dir, override string, names ...string) (string, e
 		}
 	}
 	return "", fmt.Errorf("%s not found; install or select a toolchain that provides it", names[0])
+}
+
+// An absolute compiler path can bypass the xcrun shim that supplies SDKROOT.
+func compilerSDKArgs(ctx context.Context, platform string, args []string) ([]string, error) {
+	if platform != "darwin" {
+		return args, nil
+	}
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "-isysroot") || arg == "--sysroot" || strings.HasPrefix(arg, "--sysroot=") {
+			return args, nil
+		}
+	}
+
+	sdk := os.Getenv("SDKROOT")
+	if sdk == "" || sdk == "/" {
+		output, err := exec.CommandContext(ctx, "xcrun", "--sdk", "macosx", "--show-sdk-path").Output()
+		if err != nil {
+			return nil, fmt.Errorf("cannot locate macOS SDK (xcrun --sdk macosx --show-sdk-path): %w", err)
+		}
+		sdk = strings.TrimSpace(string(output))
+	}
+	if !filepath.IsAbs(sdk) {
+		return nil, fmt.Errorf("invalid macOS SDK path: %q", sdk)
+	}
+	if info, err := os.Stat(filepath.Join(sdk, "usr", "include", "stdio.h")); err != nil || !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("macOS SDK does not provide stdio.h: %s", sdk)
+	}
+	return append([]string{"-isysroot", sdk}, args...), nil
 }
 
 func absolute(dir, path string) string {
@@ -210,14 +256,23 @@ func defaults(l observer.Limits) (observer.Limits, error) {
 }
 
 type cappedBuffer struct {
-	bytes.Buffer
-	limit int
+	mu     sync.Mutex
+	buffer bytes.Buffer
+	limit  int
 }
 
 func (b *cappedBuffer) Write(p []byte) (int, error) {
-	n := min(len(p), b.limit-b.Len())
-	_, _ = b.Buffer.Write(p[:n])
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	n := min(len(p), b.limit-b.buffer.Len())
+	_, _ = b.buffer.Write(p[:n])
 	return len(p), nil
+}
+
+func (b *cappedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buffer.String()
 }
 
 func readPrefix(path string, limit int) ([]byte, bool, error) {
@@ -275,16 +330,20 @@ func (c *capture) observe(exe, input string) error {
 	var caps struct {
 		FunctionBreakpoints bool `json:"supportsFunctionBreakpoints"`
 	}
-	if err := c.ask("initialize", map[string]any{"adapterID": "lldb", "linesStartAt1": true,
-		"columnsStartAt1": true, "supportsVariablePaging": true}, &caps); err != nil {
+	if err := c.ask("initialize", map[string]any{
+		"adapterID": "lldb", "clientID": "c-observer", "clientName": "C Observer",
+		"pathFormat": "path", "linesStartAt1": true, "columnsStartAt1": true,
+		"supportsVariablePaging": true,
+	}, &caps); err != nil {
 		return err
 	}
 	c.result.Session.Capabilities.ExplicitStops = true
 	// The adapter interprets this as an LLDB command, not a shell command.
 	launch := "process launch --stop-at-entry -i " + lldbQuote(input) +
 		" -o " + lldbQuote(c.output) + " -e " + lldbQuote(c.stderr)
-	if err := c.ask("launch", map[string]any{"program": exe, "cwd": c.dir, "disableASLR": false,
-		"initCommands": []string{"settings set target.disable-aslr false"}, "launchCommands": []string{launch}}, nil); err != nil {
+	if err := c.sendLaunch(map[string]any{"program": exe, "cwd": c.dir, "disableASLR": false,
+		"initCommands":   []string{"settings set target.disable-aslr false"},
+		"launchCommands": []string{launch}}); err != nil {
 		return err
 	}
 	if _, err := c.wait("initialized"); err != nil {
@@ -300,6 +359,9 @@ func (c *capture) observe(exe, input string) error {
 		return err
 	}
 	if err := c.ask("configurationDone", nil, nil); err != nil {
+		return err
+	}
+	if err := c.finishLaunch(); err != nil {
 		return err
 	}
 	var historyBytes int64
@@ -361,6 +423,28 @@ func (c *capture) observe(exe, input string) error {
 			return err
 		}
 	}
+}
+
+func (c *capture) sendLaunch(args map[string]any) error {
+	ctx, cancel := context.WithTimeout(c.ctx, time.Duration(c.limits.RequestTimeoutMillis)*time.Millisecond)
+	defer cancel()
+	seq, err := c.send(ctx, "launch", args)
+	if err != nil {
+		return fmt.Errorf("launch: %w", err)
+	}
+	c.launchSeq = seq
+	return nil
+}
+
+func (c *capture) finishLaunch() error {
+	ctx, cancel := context.WithTimeout(c.ctx, time.Duration(c.limits.RequestTimeoutMillis)*time.Millisecond)
+	defer cancel()
+	err := c.waitReply(ctx, c.launchSeq, nil)
+	c.launchSeq, c.launchReply = 0, nil
+	if err != nil {
+		return fmt.Errorf("launch: %w", err)
+	}
+	return nil
 }
 
 func lldbQuote(value string) string {

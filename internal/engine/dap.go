@@ -18,7 +18,7 @@ type dapMessage struct {
 	Type       string          `json:"type"`
 	Event      string          `json:"event"`
 	RequestSeq int             `json:"request_seq"`
-	Success    bool            `json:"success"`
+	Success    *bool           `json:"success"`
 	Message    string          `json:"message"`
 	Body       json.RawMessage `json:"body"`
 }
@@ -34,20 +34,27 @@ type dapRead struct {
 }
 
 type adapter struct {
-	cmd    *exec.Cmd
-	stdin  io.WriteCloser
-	stdout io.ReadCloser
-	read   chan dapRead
-	write  chan dapWrite
-	done   chan struct{}
-	exited chan error
-	seq    int
-	events []dapMessage
+	cmd         *exec.Cmd
+	stdin       io.WriteCloser
+	stdout      io.ReadCloser
+	read        chan dapRead
+	write       chan dapWrite
+	done        chan struct{}
+	exited      chan error
+	seq         int
+	events      []dapMessage
+	stderr      *cappedBuffer
+	console     cappedBuffer
+	launchSeq   int
+	launchReply *dapMessage
 }
 
 func openAdapter(path, dir string) (*adapter, error) {
 	cmd := exec.Command(path)
 	cmd.Dir = dir
+	stderr := &cappedBuffer{limit: 8192}
+	cmd.Stderr = stderr
+	cmd.WaitDelay = cleanupTimeout / 2
 	configureProcess(cmd)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -64,7 +71,8 @@ func openAdapter(path, dir string) (*adapter, error) {
 		return nil, err
 	}
 	d := &adapter{cmd: cmd, stdin: stdin, stdout: stdout, read: make(chan dapRead),
-		write: make(chan dapWrite), done: make(chan struct{}), exited: make(chan error, 1)}
+		write: make(chan dapWrite), done: make(chan struct{}), exited: make(chan error, 1),
+		stderr: stderr, console: cappedBuffer{limit: 8192}}
 	go d.readMessages()
 	go d.writeMessages()
 	return d, nil
@@ -143,26 +151,41 @@ func (d *adapter) receive(ctx context.Context) (dapMessage, error) {
 	}
 }
 
-func (d *adapter) request(ctx context.Context, command string, args any, body any) error {
+func (d *adapter) send(ctx context.Context, command string, args any) (int, error) {
 	d.seq++
 	seq := d.seq
 	data, err := json.Marshal(map[string]any{"type": "request", "seq": seq, "command": command, "arguments": args})
 	if err != nil {
-		return err
+		return 0, err
 	}
 	write := dapWrite{data: data, result: make(chan error, 1)}
 	select {
 	case d.write <- write:
 	case <-ctx.Done():
-		return ctx.Err()
+		return 0, ctx.Err()
 	}
 	select {
 	case err := <-write.result:
 		if err != nil {
-			return err
+			return 0, err
 		}
 	case <-ctx.Done():
-		return ctx.Err()
+		return 0, ctx.Err()
+	}
+	return seq, nil
+}
+
+func (d *adapter) request(ctx context.Context, command string, args any, body any) error {
+	seq, err := d.send(ctx, command, args)
+	if err != nil {
+		return err
+	}
+	return d.waitReply(ctx, seq, body)
+}
+
+func (d *adapter) waitReply(ctx context.Context, seq int, body any) error {
+	if seq == d.launchSeq && d.launchReply != nil {
+		return responseError(*d.launchReply)
 	}
 	for {
 		message, err := d.receive(ctx)
@@ -176,10 +199,13 @@ func (d *adapter) request(ctx context.Context, command string, args any, body an
 			}
 		case "response":
 			if message.RequestSeq != seq {
-				continue // A cancelled request can finish during disconnect.
+				if err := d.rememberLaunch(message); err != nil {
+					return err
+				}
+				continue
 			}
-			if !message.Success {
-				return fmt.Errorf("LLDB %s: %s", command, message.Message)
+			if err := responseError(message); err != nil {
+				return err
 			}
 			if body != nil {
 				return json.Unmarshal(message.Body, body)
@@ -191,8 +217,57 @@ func (d *adapter) request(ctx context.Context, command string, args any, body an
 	}
 }
 
+// LLDB versions differ on whether launch replies before or after configurationDone.
+func (d *adapter) rememberLaunch(message dapMessage) error {
+	if d.launchSeq != 0 && message.Type == "response" && message.RequestSeq == d.launchSeq {
+		d.launchReply = &message
+		if err := responseError(message); err != nil {
+			return fmt.Errorf("launch: %w", err)
+		}
+	}
+	return nil
+}
+
+func responseError(message dapMessage) error {
+	if message.Success == nil {
+		return errors.New("LLDB response omitted the success field")
+	}
+	if *message.Success {
+		return nil
+	}
+	var details struct {
+		Error struct {
+			ID        int
+			Format    string
+			Variables map[string]string
+		}
+	}
+	_ = json.Unmarshal(message.Body, &details)
+	if description := strings.TrimSpace(details.Error.Format); description != "" {
+		for key, value := range details.Error.Variables {
+			description = strings.ReplaceAll(description, "{"+key+"}", value)
+		}
+		return errors.New(description)
+	}
+	if description := strings.TrimSpace(message.Message); description != "" {
+		return errors.New(description)
+	}
+	if details.Error.ID != 0 {
+		return fmt.Errorf("LLDB rejected the request (error %d)", details.Error.ID)
+	}
+	return errors.New("LLDB rejected the request without an error message")
+}
+
 func (d *adapter) saveEvent(message dapMessage) error {
 	switch message.Event {
+	case "output":
+		var output struct{ Category, Output string }
+		if json.Unmarshal(message.Body, &output) == nil {
+			switch output.Category {
+			case "console", "important", "stderr":
+				_, _ = d.console.Write([]byte(output.Output))
+			}
+		}
 	case "initialized", "stopped", "exited", "terminated":
 		if len(d.events) == 64 {
 			return errors.New("too many pending DAP events")
@@ -220,6 +295,8 @@ func (d *adapter) event(ctx context.Context, names ...string) (dapMessage, error
 			if err := d.saveEvent(message); err != nil {
 				return message, err
 			}
+		} else if err := d.rememberLaunch(message); err != nil {
+			return message, err
 		}
 	}
 }
