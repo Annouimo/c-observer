@@ -160,7 +160,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model,tea.Cmd) {
 			switch m.focus {
 			case 0: m.moveSource(d)
 			case 1: m.varCursor=max(0,min(m.varCursor+d,len(m.replay.Rows(m.collapsed))-1))
-			case 2: m.consoleScroll=max(0,min(m.consoleScroll+d,len(m.consoleLines(m.consoleTab,m.consoleWidth()))-1))
+			case 2:
+				length:=len(m.consoleLines(m.consoleTab,m.consoleWidth()))
+				if m.consoleTab==4 {length=m.comparisonLength(m.consoleWidth())}
+				m.consoleScroll=max(0,min(m.consoleScroll+d,max(0,length-1)))
 			}
 		case "enter":
 			if m.focus==1 {
@@ -168,7 +171,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model,tea.Cmd) {
 				m.targetPosition=m.replay.Position
 			}
 			if m.focus==0 && m.replay.Current()!=nil {m.mode="stack";m.menuCursor=m.replay.Frame}
-			if m.focus==2 {m.consoleTab=(m.consoleTab+1)%4;m.consoleScroll=0}
+			if m.focus==2 {m.consoleTab=(m.consoleTab+1)%5;m.consoleScroll=0}
 		}
 	}
 	return m,nil
@@ -197,7 +200,7 @@ func (m *Model) seek(pos int) {
 	if key!="" {
 		for i,row:=range m.replay.Rows(m.collapsed) {if row.Key==key {m.varCursor=i;break}}
 	}
-	if m.replay.End() {m.consoleTab=1}
+	if m.replay.End() {m.consoleTab=1;if m.config.ExpectedStdout!=nil {m.consoleTab=4}}
 }
 func (m *Model) resetScroll() {
 	m.sourceScroll,m.varScroll,m.consoleScroll=0,0,0
@@ -290,11 +293,11 @@ func (m Model) consoleTextFor(tab int) string {
 	case 3:if m.config.ExpectedStdout!=nil {data=string(*m.config.ExpectedStdout)} else {data="（未提供）"}
 	}
 	if data=="" {data="（空）"}
-	if tab==1 && m.replay.Run.Output.StdoutTruncated || tab==2 && m.replay.Run.Output.StderrTruncated {data+="\n[output truncated during run]"}
+	if tab==1 && m.replay.Run.Output.StdoutTruncated || tab==2 && m.replay.Run.Output.StderrTruncated {data+="\n[运行输出已截断]"}
 	return SafeText(data,true)
 }
 func (m Model) consoleWidth() int {
-	if m.width<86 || m.maximized {return m.width}
+	if m.width<86 || m.maximized || (m.replay.End() && m.consoleTab==4) {return m.width}
 	if m.consoleTab==0 {return m.width/2}
 	return m.width-m.width*55/100-1
 }
@@ -303,6 +306,7 @@ func (m Model) consoleLines(tab,w int) []string {
 }
 func (m Model) console(w,h int) string {return m.consoleView(m.consoleTab,w,h,m.consoleScroll,m.focus==2)}
 func (m Model) consoleView(tab,w,h,scroll int,focused bool) string {
+	if tab==4 {m.consoleScroll=scroll;return m.outputComparison(w,h)}
 	labels:=[]string{"输入","实际输出","错误流","预期输出"}
 	lines:=[]string{head(" "+labels[tab],focused,w)}
 	a:=m.consoleLines(tab,w)
@@ -351,6 +355,7 @@ func (m Model) View() string {
 	var body string
 	if w>=86 && !m.maximized {
 		consoleH:=max(4,min(7,mainH/3))
+		if m.replay.End() && m.consoleTab==4 {consoleH=max(5,mainH*2/3)}
 		topH:=mainH-consoleH
 		if m.replay.End() {body=m.ending(w,topH)} else {
 			left:=w/2
@@ -362,7 +367,9 @@ func (m Model) View() string {
 		inputScroll,outputScroll:=0,0
 		outputTab:=m.consoleTab
 		if m.consoleTab==0 {inputScroll=m.consoleScroll;outputTab=1} else {outputScroll=m.consoleScroll}
-		body+="\n"+lipgloss.JoinHorizontal(lipgloss.Top,m.consoleView(0,inputW,consoleH,inputScroll,m.focus==2 && m.consoleTab==0),muted.Render(strings.Repeat("│\n",consoleH-1)+"│"),m.consoleView(outputTab,outputW,consoleH,outputScroll,m.focus==2 && m.consoleTab!=0))
+		if m.replay.End() && m.consoleTab==4 {body+="\n"+m.outputComparison(w,consoleH)} else {
+			body+="\n"+lipgloss.JoinHorizontal(lipgloss.Top,m.consoleView(0,inputW,consoleH,inputScroll,m.focus==2 && m.consoleTab==0),muted.Render(strings.Repeat("│\n",consoleH-1)+"│"),m.consoleView(outputTab,outputW,consoleH,outputScroll,m.focus==2 && m.consoleTab!=0))
+		}
 	} else if m.focus==2 {body=m.console(w,mainH)} else if m.replay.End() {body=m.ending(w,mainH)} else if m.focus==0 {body=m.source(w,mainH)} else {body=m.variables(w,mainH)}
 	n:=len(m.replay.Run.Snapshots)
 	pos:=fmt.Sprintf("快照 %d/%d",m.replay.Position+1,n)
