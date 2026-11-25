@@ -144,6 +144,7 @@ func (r Replay) Rows(collapsed map[string]bool) []VariableRow {
 			if row.Changed { row.Before = SafeText(o.Value,false) }
 			row.Expandable = len(v.Children)>0
 			row.Collapsed = collapsed[key]
+			if _,ok:=collapsed[key];!ok && collapsed!=nil && row.Expandable && (v.Kind==observer.Array || v.Kind==observer.Struct) {row.Collapsed=true}
 			rows = append(rows,row)
 			if row.Expandable && !row.Collapsed {
 				var oldChildren []observer.Variable
