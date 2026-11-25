@@ -93,9 +93,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model,tea.Cmd) {
 			if m.demo {m.replay.Seek(0);m.resetScroll();m.collapsed=map[string]bool{};break}
 			cmd:=m.start();return m,cmd
 		case "left": m.replay.Move(-1);m.resetScroll()
-		case "right": m.replay.Move(1);m.resetScroll()
+		case "right": m.replay.Move(1);m.resetScroll();if m.replay.End() {m.consoleTab=1}
 		case "home": m.replay.Seek(0);m.resetScroll()
-		case "end": m.replay.Seek(len(m.replay.Run.Snapshots));m.resetScroll()
+		case "end": m.replay.Seek(len(m.replay.Run.Snapshots));m.resetScroll();m.consoleTab=1
 		case "tab": m.focus=(m.focus+1)%3
 		case "shift+tab": m.focus=(m.focus+2)%3
 		case "up","down","pgup","pgdown":
@@ -129,8 +129,8 @@ func (m *Model) clampSourceScroll() {
 		return
 	}
 	if s:=m.replay.Current();s!=nil {
-		n:=max(1,m.height-5)
-		if m.width>=86 {n-=max(4,min(7,(m.height-3)/3))}
+		n:=max(1,m.height-6)
+		if m.width>=86 {n-=max(4,min(7,(m.height-4)/3))}
 		n=max(1,n)
 		total:=len(strings.Split(sourceFor(m.replay.Run,s.Location.File),"\n"))
 		base:=s.Location.Line-1-n/2
@@ -284,7 +284,7 @@ func (m Model) View() string {
 	}
 	if m.err!="" {return failure.Render("Invalid record: "+SafeText(m.err,false))+"\nR: retry · Q: quit"}
 	// Header/footer consume three rows. The console is kept compact on wide terminals.
-	mainH:=h-3
+	mainH:=h-4
 	var body string
 	if w>=86 {
 		consoleH:=max(4,min(7,mainH/3))
@@ -299,7 +299,7 @@ func (m Model) View() string {
 	n:=len(m.replay.Run.Snapshots)
 	pos:=fmt.Sprintf("Pause %d/%d",m.replay.Position+1,n)
 	if m.replay.End() {pos=fmt.Sprintf("END · %d pauses",n)}
-	help:="←/→ step  ↑/↓ scroll  Tab focus  Enter expand/switch  Home/End  R rerun  Q quit"
-	if m.demo {help=strings.Replace(help,"R rerun","R reset",1)}
-	return accent.Render(clip(title,w))+"\n"+body+"\n"+muted.Render(clip(pos+"  ·  "+string(m.replay.Run.Reason),w))+"\n"+muted.Render(clip(help,w))
+	help:="Home/End  R rerun  Q quit"
+	if m.demo {help="Home/End  R reset  Q quit"}
+	return accent.Render(clip(title,w))+"\n"+body+"\n"+muted.Render(clip(pos+"  ·  "+string(m.replay.Run.Reason),w))+"\n"+muted.Render(clip("←/→ step  ↑/↓ scroll  Tab focus  Enter expand/switch",w))+"\n"+muted.Render(clip(help,w))
 }
