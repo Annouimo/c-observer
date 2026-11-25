@@ -1,0 +1,3 @@
+# Synthetic fixtures
+
+Hand-authored scenarios for frontend and contract tests, not real debugger captures. `wrong-index.json` demonstrates a wrong array index, nested struct values, partial array capture, and expected versus actual output. `limited.json` demonstrates an incomplete run. The envelope carries stdin and optional expected_stdout as text; event output byte slices are base64, as encoded by Go's encoding/json. Fixture snapshots are representative selected pauses, not a guarantee of backend step behavior. Do not treat unknown/uncaptured values as zero or infer missing array elements. Add actual backend recordings separately with clear provenance.
