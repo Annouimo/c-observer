@@ -70,9 +70,16 @@ func (m Model) outputComparison(w,h int) string {
 	lines=append(lines,muted.Render(clip("· 空格  ↵ 换行  \\t 制表符  \\r 回车",w)))
 	rows:=CompareOutput(*m.config.ExpectedStdout,out)
 	if len(rows)==0 {lines=append(lines,"两者均为空。");return fixed(lines,w,h)}
+	avail:=max(1,h-len(lines))
+	tableLines:=comparisonRows(rows,w)
+	start:=max(0,min(m.consoleScroll,max(0,len(tableLines)-avail)))
+	lines=append(lines,tableLines[start:min(len(tableLines),start+avail)]...)
+	return fixed(lines,w,h)
+}
+
+func comparisonRows(rows []OutputLine,w int) []string {
 	// Pair lines by position (not an edit-distance alignment). Wrap long
 	// values so the entire content remains inspectable.
-	avail:=max(1,h-len(lines))
 	cw:=max(1,(w-9)/2)
 	tableLines:=[]string{muted.Render(pad("行",5)+" "+pad(clip("预期",cw),cw)+" │ "+clip("实际",cw))}
 	for i,r:=range rows {
@@ -89,11 +96,13 @@ func (m Model) outputComparison(w,h int) string {
 			tableLines=append(tableLines,pad(prefix,5)+" "+pad(clip(l,cw),cw)+" │ "+rr)
 		}
 	}
-	start:=max(0,min(m.consoleScroll,max(0,len(tableLines)-avail)))
-	lines=append(lines,tableLines[start:min(len(tableLines),start+avail)]...)
-	return fixed(lines,w,h)
+	return tableLines
 }
-
+func (m Model) comparisonLength(w int) int {
+	if m.config.ExpectedStdout==nil {return 1}
+	out,_:=m.replay.Output()
+	return len(comparisonRows(CompareOutput(*m.config.ExpectedStdout,out),w))
+}
 func wrapCells(text string,w int) []string {
 	return strings.Split(runewidth.Wrap(text,max(1,w)),"\n")
 }
