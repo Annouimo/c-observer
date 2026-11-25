@@ -86,6 +86,16 @@ func NewSetup(engine observer.Engine, config observer.LaunchConfig) Model {
 	return m
 }
 
+// NewSetupPreview exposes the form without a live engine.
+func NewSetupPreview(f Fixture) Model {
+	m:=NewPreview(f)
+	m.standalone=true
+	m.settingUp=true
+	m.config.SourcePath="main.c"
+	m.setup=setupFrom(m.config)
+	return m
+}
+
 func setupFrom(config observer.LaunchConfig) SetupState {
 	s:=SetupState{path:newField(config.SourcePath),input:newField(string(config.Stdin))}
 	if config.ExpectedStdout!=nil {
