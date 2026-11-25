@@ -65,7 +65,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model,tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width,m.height=msg.Width,msg.Height
 	case startRun:
-		return m,m.start()
+		cmd:=m.start();return m,cmd
 	case clockTick:
 		if m.running { return m,tick() }
 	case runDone:
@@ -91,7 +91,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model,tea.Cmd) {
 		case "esc","q","ctrl+c": return m,tea.Quit
 		case "r":
 			if m.demo {m.replay.Seek(0);m.resetScroll();m.collapsed=map[string]bool{};break}
-			return m,m.start()
+			cmd:=m.start();return m,cmd
 		case "left": m.replay.Move(-1);m.resetScroll()
 		case "right": m.replay.Move(1);m.resetScroll()
 		case "home": m.replay.Seek(0);m.resetScroll()
@@ -103,9 +103,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model,tea.Cmd) {
 			if k=="up" || k=="pgup" {d=-1}
 			if k=="pgup" || k=="pgdown" {d*=max(1,m.height/3)}
 			switch m.focus {
-			case 0: m.sourceScroll+=d
+			case 0: m.sourceScroll+=d; m.clampSourceScroll()
 			case 1: m.varCursor=max(0,min(m.varCursor+d,len(m.replay.Rows(m.collapsed))-1))
-			case 2: m.consoleScroll=max(0,m.consoleScroll+d)
+			case 2: m.consoleScroll=max(0,min(m.consoleScroll+d,len(strings.Split(m.consoleText(),"\n"))-1))
 			}
 		case "enter":
 			if m.focus==1 {
@@ -122,6 +122,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model,tea.Cmd) {
 		}
 	}
 	return m,nil
+}
+func (m *Model) clampSourceScroll() {
+	if m.replay.End() {
+		m.sourceScroll=max(0,min(m.sourceScroll,len(m.replay.Run.Diagnostics)+5))
+		return
+	}
+	if s:=m.replay.Current();s!=nil {
+		n:=max(1,m.height-5)
+		if m.width>=86 {n-=max(4,min(7,(m.height-3)/3))}
+		n=max(1,n)
+		total:=len(strings.Split(sourceFor(m.replay.Run,s.Location.File),"\n"))
+		base:=s.Location.Line-1-n/2
+		m.sourceScroll=max(-base,min(m.sourceScroll,max(0,total-n)-base))
+	}
 }
 func (m *Model) resetScroll() {m.sourceScroll,m.varCursor,m.varScroll,m.consoleScroll=0,0,0,0}
 
@@ -214,10 +228,7 @@ func (m Model) variables(w,h int) string {
 	}
 	return fixed(lines,w,h)
 }
-func (m Model) console(w,h int) string {
-	labels:=[]string{"INPUT","STDOUT","STDERR","EXPECTED"}
-	heading:=" "+labels[m.consoleTab]+"  [Enter: switch]"
-	lines:=[]string{head(heading,m.focus==2,w)}
+func (m Model) consoleText() string {
 	out,errOut:=m.replay.Output()
 	var data string
 	switch m.consoleTab {
@@ -228,8 +239,12 @@ func (m Model) console(w,h int) string {
 	}
 	if data=="" {data="(empty)"}
 	if m.consoleTab==1 && m.replay.Run.Output.StdoutTruncated || m.consoleTab==2 && m.replay.Run.Output.StderrTruncated {data+="\n[output truncated during run]"}
-	data=SafeText(data,true)
-	a:=strings.Split(data,"\n")
+	return SafeText(data,true)
+}
+func (m Model) console(w,h int) string {
+	labels:=[]string{"INPUT","STDOUT","STDERR","EXPECTED"}
+	lines:=[]string{head(" "+labels[m.consoleTab]+"  [Enter: switch]",m.focus==2,w)}
+	a:=strings.Split(m.consoleText(),"\n")
 	start:=max(0,min(m.consoleScroll,max(0,len(a)-1)))
 	for _,l:=range a[start:min(len(a),start+max(0,h-1))] {lines=append(lines,clip(l,w))}
 	return fixed(lines,w,h)
