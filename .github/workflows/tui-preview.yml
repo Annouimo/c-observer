@@ -21,6 +21,7 @@ jobs:
       - run: go test ./...
       - run: go vet ./...
       - run: go build ./cmd/c-observer-preview
+      - run: CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o c-observer-preview-macos-arm64 ./cmd/c-observer-preview
       - run: cat go.sum
       - uses: actions/upload-artifact@v4
         with:
@@ -29,4 +30,42 @@ jobs:
             c-observer-preview
             testdata/snapshots/
             go.sum
-
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tui-preview-macos-arm64
+          path: |
+            c-observer-preview-macos-arm64
+            testdata/snapshots/
+      - name: Format and dependency handoff
+        run: |
+          python3 - <<'PY'
+          import base64
+          from pathlib import Path
+          for p in [Path("go.mod"), Path("go.sum"), *Path("internal/tui").glob("*.go"), *Path("cmd/c-observer-preview").glob("*.go")]:
+              print("TUI_FORMAT " + str(p) + " " + base64.b64encode(p.read_bytes()).decode("ascii"))
+          PY
+  real-lldb:
+    name: Real LLDB frontend integration (Linux)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+          cache: false
+      - name: Install Clang and LLDB
+        run: |
+          sudo apt-get update
+          if apt-cache show clang-19 lldb-19 >/dev/null 2>&1; then
+            sudo apt-get install -y clang-19 lldb-19
+          else
+            sudo apt-get install -y clang lldb
+          fi
+          compiler="$(command -v clang-19 || command -v clang)"
+          debugger="$(command -v lldb-dap-19 || command -v lldb-dap || find /usr/lib/llvm-*/bin -name lldb-dap -print | sort -V | tail -1)"
+          test -x "$compiler" && test -x "$debugger"
+          echo "C_OBSERVER_TEST_CLANG=$compiler" >> "$GITHUB_ENV"
+          echo "C_OBSERVER_TEST_LLDB=$debugger" >> "$GITHUB_ENV"
+      - run: go mod tidy
+      - run: C_OBSERVER_REAL_DEBUGGER=1 go test -v -run '^TestRealEngineReplay$' ./internal/tui
