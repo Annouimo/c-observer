@@ -272,3 +272,16 @@ func (m *Model) selectHistoryTarget() {
 		return
 	}
 }
+
+ // PreviewText renders the actual model without a terminal. It is restricted to
+// synthetic fixtures and useful for review/CI, never a substitute for native TUI tests.
+func (m Model) PreviewText(w,h,step int) (string,error) {
+	if !m.demo {return "",fmt.Errorf("only synthetic previews can be dumped")}
+	if w<45 || w>300 || h<14 || h>100 {return "",fmt.Errorf("dump size must be 45..300 columns and 14..100 rows")}
+	if !m.settingUp {
+		if step<0 || step>len(m.replay.Run.Snapshots) {return "",fmt.Errorf("invalid snapshot number")}
+		if step==0 {m.seek(len(m.replay.Run.Snapshots))} else {m.seek(step-1)}
+	}
+	m.width,m.height=w,h
+	return m.View(),nil
+}
