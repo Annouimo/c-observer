@@ -34,12 +34,20 @@ type Model struct {
 	history []HistoryEntry
 	rangeInput [2]string
 	rangeField int
+	fullArrays map[string]bool
+	manualRanges map[string]FocusRange
+	maximized bool
+	navigation []int
+	navLabel string
+	sourceLine, sourceColumn int
+	menuCursor int
+	jumpInput string
 }
 type runDone struct{ result observer.RunResult }
 type clockTick time.Time
 
 func NewPreview(f Fixture) Model {
-	m := Model{replay:Replay{Run:f.Run},demo:true, width:100,height:30,consoleTab:1,collapsed:map[string]bool{}}
+	m := Model{replay:NewReplay(f.Run),demo:true, width:100,height:30,consoleTab:1,collapsed:map[string]bool{}}
 	m.config.Stdin=[]byte(f.Stdin)
 	if f.ExpectedStdout!=nil { b:=[]byte(*f.ExpectedStdout); m.config.ExpectedStdout=&b }
 	return m
@@ -82,7 +90,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model,tea.Cmd) {
 		m.stopping=false
 		if m.quitting {return m,tea.Quit}
 		if err:=ValidateRun(msg.result);err!=nil {m.err=err.Error();return m,nil}
-		m.replay=Replay{Run:msg.result}
+		m.replay=NewReplay(msg.result)
+		m.fullArrays=nil;m.manualRanges=nil;m.navigation=nil;m.navLabel="";m.sourceLine=0;m.sourceColumn=0
 		m.sourceScroll,m.varCursor,m.varScroll,m.consoleScroll=0,0,0,0
 		m.collapsed=map[string]bool{}
 		m.mode,m.notice="",""
@@ -98,15 +107,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model,tea.Cmd) {
 			}
 			return m,nil
 		}
-		if m.mode!="" {cmd:=m.handleInspector(msg);return m,cmd}
+		if m.mode!="" {
+			if m.workspaceMode() {cmd:=m.handleWorkspace(msg);return m,cmd}
+			cmd:=m.handleInspector(msg);return m,cmd
+		}
 		m.notice=""
 		switch k {
+		case "m":m.maximized=!m.maximized
+		case "f":m.mode="filter";m.menuCursor=0
+		case "s":m.mode="stack";m.menuCursor=m.replay.Frame
+		case "j":m.mode="jump";m.jumpInput=""
+		case "?":m.mode="help"
+		case "o":
+			if m.focus==1 && !m.replay.End() {m.mode="object";m.menuCursor=0}
+		case "t":m.toggleTree()
+		case "v":
+			if row,ok:=m.selectedVariable();ok {m.toggleFull(row)}
+		case "[":if m.focus==0 {m.sourceColumn=max(0,m.sourceColumn-8)}
+		case "]":if m.focus==0 {m.sourceColumn+=8}
 		case "d","h","a":
 			if k=="h" && m.focus==0 {
-				if snap:=m.replay.Current();snap!=nil && snap.Location.File!="" && snap.Location.Line>0 {
+				if loc:=m.selectedLocation();loc.File!="" && loc.Line>0 {
 					m.mode="line-history"
-					m.target=VariableRow{Path:fmt.Sprintf("%s:%d",snap.Location.File,snap.Location.Line)}
-					m.history=m.replay.LineHistory(snap.Location)
+					m.target=VariableRow{Path:fmt.Sprintf("%s:%d",loc.File,loc.Line)}
+					m.history=m.replay.LineHistory(loc)
 					m.modalScroll=0
 				}
 				break
@@ -116,14 +140,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model,tea.Cmd) {
 				m.openInspector(mode)
 				m.targetPosition=m.replay.Position
 			}
-		case "esc","q","ctrl+c": return m,tea.Quit
+		case "esc":if m.maximized {m.maximized=false;break};return m,tea.Quit
+		case "q","ctrl+c":return m,tea.Quit
 		case "e":
 			if m.standalone {m.setup=setupFrom(m.config);m.settingUp=true}
 		case "r":
 			if m.demo {m.replay.Seek(0);m.resetScroll();m.collapsed=map[string]bool{};break}
 			cmd:=m.start();return m,cmd
-		case "left": m.seek(m.replay.Position-1)
-		case "right": m.seek(m.replay.Position+1)
+		case "left": m.navigate(-1)
+		case "right": m.navigate(1)
 		case "home": m.seek(0)
 		case "end": m.seek(len(m.replay.Run.Snapshots))
 		case "tab": m.focus=(m.focus+1)%3
@@ -133,21 +158,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model,tea.Cmd) {
 			if k=="up" || k=="pgup" {d=-1}
 			if k=="pgup" || k=="pgdown" {d*=max(1,m.height/3)}
 			switch m.focus {
-			case 0: m.sourceScroll+=d; m.clampSourceScroll()
+			case 0: m.moveSource(d)
 			case 1: m.varCursor=max(0,min(m.varCursor+d,len(m.replay.Rows(m.collapsed))-1))
 			case 2: m.consoleScroll=max(0,min(m.consoleScroll+d,len(m.consoleLines(m.consoleTab,m.consoleWidth()))-1))
 			}
 		case "enter":
 			if m.focus==1 {
-				rows:=m.replay.Rows(m.collapsed)
-				if m.varCursor>=0 && m.varCursor<len(rows) && rows[m.varCursor].Expandable {
-					key:=rows[m.varCursor].Key
-					// Copy map to keep Bubble Tea value updates isolated.
-					next:=make(map[string]bool,len(m.collapsed)+1)
-					for k,v:=range m.collapsed {next[k]=v}
-					next[key]=!rows[m.varCursor].Collapsed;m.collapsed=next
-				}
+				m.openInspector("detail")
+				m.targetPosition=m.replay.Position
 			}
+			if m.focus==0 && m.replay.Current()!=nil {m.mode="stack";m.menuCursor=m.replay.Frame}
 			if m.focus==2 {m.consoleTab=(m.consoleTab+1)%4;m.consoleScroll=0}
 		}
 	}
@@ -172,6 +192,7 @@ func (m *Model) seek(pos int) {
 	var key string
 	if m.varCursor>=0 && m.varCursor<len(rows) && rows[m.varCursor].Reliable {key=rows[m.varCursor].Key}
 	m.replay.Seek(pos)
+	m.sourceLine=0;m.sourceColumn=0
 	m.resetScroll()
 	if key!="" {
 		for i,row:=range m.replay.Rows(m.collapsed) {if row.Key==key {m.varCursor=i;break}}
@@ -231,9 +252,11 @@ func sourceFor(run observer.RunResult,path string) string {
 }
 func (m Model) source(w,h int) string {
 	s:=m.replay.Current()
-	lines:=[]string{head(" 源代码",m.focus==0,w)}
+	sourceTitle:=" 源代码 · 暂停位置"
+	if m.replay.Frame>0 {sourceTitle=" 源代码 · 所选调用帧"}
+	lines:=[]string{head(sourceTitle,m.focus==0,w)}
 	if s==nil {return fixed(append(lines,muted.Render("没有当前源码位置。")),w,h)}
-	loc:=s.Location
+	loc:=m.replay.ViewedLocation()
 	lines=append(lines,muted.Render(clip(SafeText(fmt.Sprintf("%s:%d  %s",loc.File,loc.Line,loc.Function),false),w)))
 	src:=sourceFor(m.replay.Run,loc.File)
 	if loc.File=="" || src=="" || loc.Line<=0 {
@@ -241,62 +264,21 @@ func (m Model) source(w,h int) string {
 	}
 	all:=strings.Split(SafeText(src,true),"\n")
 	n:=max(1,h-2)
-	start:=max(0,min(loc.Line-1-n/2+m.sourceScroll,max(0,len(all)-n)))
+	center:=loc.Line
+	if m.sourceLine>0 {center=m.sourceLine}
+	start:=max(0,min(center-1-n/2+m.sourceScroll,max(0,len(all)-n)))
 	// Lex the whole file so multiline comments remain highlighted when scrolled.
 	tokens:=lexC(strings.Join(all,"\n"))
 	for i:=start;i<min(len(all),start+n);i++ {
 		mark:=" "
-		if i+1==loc.Line {mark=">"}
+		if i+1==loc.Line {mark=">"} else if m.sourceLine==i+1 {mark=":"}
 		prefix:=fmt.Sprintf("%s%4d ",mark,i+1)
-		if i+1==loc.Line {prefix=accent.Render(prefix)} else {prefix=muted.Render(prefix)}
-		lines=append(lines,prefix+renderTokens(tokens[i],max(0,w-6)))
+		if i+1==loc.Line {prefix=accent.Render(prefix)} else if m.sourceLine==i+1 {prefix=selected.Render(prefix)} else {prefix=muted.Render(prefix)}
+		lines=append(lines,prefix+renderTokens(skipTokenCells(tokens[i],m.sourceColumn),max(0,w-runewidth.StringWidth(fmt.Sprintf("%s%4d ",mark,i+1)))))
 	}
 	return fixed(lines,w,h)
 }
-func (m Model) variables(w,h int) string {
-	lines:=[]string{head(" 变量",m.focus==1,w)}
-	s:=m.replay.Current()
-	if s==nil {return fixed(append(lines,muted.Render("没有当前变量状态。")),w,h)}
-	label:="当前栈帧"
-	if len(s.Frames)>0 {
-		label=SafeText(s.Frames[0].Location.Function,false)
-		if !s.Frames[0].VariablesComplete {label+=" · 列表不完整"}
-	}
-	if len(s.Globals)>0 {label+=" + 全局变量"}
-	if !s.GlobalsComplete && m.replay.Run.Session.Capabilities.Globals {label+=" · 全局列表不完整"}
-	lines=append(lines,muted.Render(clip(label+" · D 数据表 / H 历史",w)))
-	rows:=m.replay.Rows(m.collapsed)
-	allRows:=m.replay.Rows(nil)
-	if len(rows)==0 {return fixed(append(lines,muted.Render("无已记录变量。")),w,h)}
-	n:=max(1,h-2)
-	start:=max(0,min(m.varCursor-n+1,max(0,len(rows)-n)))
-	for i:=start;i<min(len(rows),start+n);i++ {
-		r:=rows[i]
-		cursor:=" "
-		if m.focus==1 && i==m.varCursor {cursor=">"}
-		toggle:=" "
-		if r.Expandable {toggle="-";if r.Collapsed {toggle="+"}}
-		prefix:=cursor+strings.Repeat("  ",min(r.Depth,6))+toggle+" "+r.Name
-		value:=r.Value
-		if r.Detail!="" {if value!="" {value+=" · "};value+=r.Detail}
-		if r.Changed {value="* "+r.Before+" → "+r.Value}
-		if r.Raw.Kind==observer.Array && len(r.Raw.Children)>0 && r.Raw.Children[0].Index!=nil {value+=fmt.Sprintf(" · [%d…]",*r.Raw.Children[0].Index)}
-		hiddenChanges:=0
-		if r.Collapsed {
-			for _,child:=range allRows {if child.Changed && strings.HasPrefix(child.Key,r.Key+"/") {hiddenChanges++}}
-			if hiddenChanges>0 {value=fmt.Sprintf("* %d 项变化 · %s",hiddenChanges,value)}
-		}
-		typeText:=" ["+r.Type+"]"
-		nameWidth:=max(1,w*37/100)
-		left:=pad(clip(prefix,nameWidth),nameWidth)
-		rest:=max(0,w-nameWidth-1)
-		line:=left+" "+clip(value+typeText,rest)
-		if r.Changed || hiddenChanges>0 {line=changed.Render(line)}
-		if m.focus==1 && i==m.varCursor {line=selected.Render(line)}
-		lines=append(lines,line)
-	}
-	return fixed(lines,w,h)
-}
+func (m Model) variables(w,h int) string {return m.variablePanel(w,h)}
 func (m Model) consoleText() string {return m.consoleTextFor(m.consoleTab)}
 func (m Model) consoleTextFor(tab int) string {
 	out,errOut:=m.replay.Output()
@@ -312,8 +294,8 @@ func (m Model) consoleTextFor(tab int) string {
 	return SafeText(data,true)
 }
 func (m Model) consoleWidth() int {
-	if m.width<86 {return m.width}
-	if m.consoleTab==0 {return m.width*55/100}
+	if m.width<86 || m.maximized {return m.width}
+	if m.consoleTab==0 {return m.width/2}
 	return m.width-m.width*55/100-1
 }
 func (m Model) consoleLines(tab,w int) []string {
@@ -363,19 +345,19 @@ func (m Model) View() string {
 		return accent.Render(title)+"\n\n"+status+"\n"+time.Since(m.started).Round(100*time.Millisecond).String()+"\n\nEsc 取消 · Q 取消并退出"
 	}
 	if m.err!="" {return failure.Render("运行记录无效: "+SafeText(m.err,false))+"\nR 重试 · Q 退出"}
-	if m.mode!="" {return m.inspector(w,h)}
+	if m.mode!="" {if m.workspaceMode() {return m.workspaceOverlay(w,h)};return m.inspector(w,h)}
 	// Header/footer consume three rows. The console is kept compact on wide terminals.
 	mainH:=h-4
 	var body string
-	if w>=86 {
+	if w>=86 && !m.maximized {
 		consoleH:=max(4,min(7,mainH/3))
 		topH:=mainH-consoleH
 		if m.replay.End() {body=m.ending(w,topH)} else {
-			left:=w*55/100
+			left:=w/2
 			right:=w-left-1
 			body=lipgloss.JoinHorizontal(lipgloss.Top,m.source(left,topH),muted.Render(strings.Repeat("│\n",topH-1)+"│"),m.variables(right,topH))
 		}
-		inputW:=w*55/100
+		inputW:=w/2
 		outputW:=w-inputW-1
 		inputScroll,outputScroll:=0,0
 		outputTab:=m.consoleTab
@@ -385,12 +367,14 @@ func (m Model) View() string {
 	n:=len(m.replay.Run.Snapshots)
 	pos:=fmt.Sprintf("快照 %d/%d",m.replay.Position+1,n)
 	if m.replay.End() {pos=fmt.Sprintf("END · %d 次暂停",n)}
+	if m.navLabel!="" {pos+=" · "+m.navLabel}
+	pos+=" "+timelineBar(m.replay.Position,n,min(16,w/6))
 	help:="Home/End 首尾  R 重跑  Q 退出"
 	if m.demo {help="Home/End 首尾  R 重置  Q 退出"}
-	if m.focus==1 && !m.replay.End() {help="D 数据表  H 历史  A 范围  R 重跑/重置  Q 退出"}
-	if m.focus==2 {help="Enter 切换输入/实际输出/错误流/预期输出  Q 退出"}
-	if m.focus==0 && !m.replay.End() {help+="  H 本行历史"}
+	if m.focus==1 && !m.replay.End() {help="Enter 详情  O 操作  H 历史  M 最大化  ? 帮助"}
+	if m.focus==2 {help="Enter 切换输入输出  M 最大化  ? 帮助"}
+	if m.focus==0 && !m.replay.End() {help="H 行历史  S 栈帧  M 最大化  F 筛选  ? 帮助"}
 	if m.standalone && m.focus==0 {help+="  E 修改配置"}
 	if m.notice!="" {help=m.notice}
-	return accent.Render(clip(title,w))+"\n"+body+"\n"+muted.Render(clip(pos+"  ·  "+reasonLabel(m.replay.Run.Reason),w))+"\n"+muted.Render(clip("←/→ 快照  ↑/↓ 选择  Tab 区域  Enter 展开/切换",w))+"\n"+muted.Render(clip(help,w))
+	return accent.Render(clip(title,w))+"\n"+body+"\n"+muted.Render(clip(pos+"  ·  "+reasonLabel(m.replay.Run.Reason),w))+"\n"+muted.Render(clip("←/→ 回放  ↑/↓ 选择  Tab 区域  F 筛选  J 跳转  R 重跑",w))+"\n"+muted.Render(clip(help,w))
 }
