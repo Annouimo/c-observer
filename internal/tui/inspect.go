@@ -113,44 +113,12 @@ func findRow(rows []VariableRow,key string) (VariableRow,bool) {
 // start a new baseline; they are not inferred changes.
 func (r Replay) History(target VariableRow) []HistoryEntry {
 	if !target.Reliable {return nil}
-	var out []HistoryEntry
-	lastSeen:=-2
-	for i,s:=range r.Run.Snapshots {
-		r.Position=i
-		rows:=r.Rows(nil)
-		v,ok:=findRow(rows,target.Key)
-		if !ok || !v.Reliable || v.Raw.Status!=observer.Observed || v.Raw.ValueTruncated {continue}
-		aggregate:=v.Raw.Kind==observer.Array || v.Raw.Kind==observer.Struct
-		var changes []string
-		if aggregate {
-			for _,c:=range rows {if c.Changed && strings.HasPrefix(c.Key,v.Key+"/") {changes=append(changes,c.Path+": "+c.Before+" → "+c.Value)}}
-		}
-		if lastSeen!=i-1 || i==0 {
-			out=append(out,HistoryEntry{Position:i,Location:s.Location,Text:"观测起点 · "+cellFor(v).Text})
-		} else if v.Changed {
-			out=append(out,HistoryEntry{Position:i,Location:s.Location,Text:v.Before+" → "+v.Value,Changed:true})
-		} else if len(changes)>0 {
-			out=append(out,HistoryEntry{Position:i,Location:s.Location,Text:strings.Join(changes,"; "),Changed:true})
-		}
-		lastSeen=i
-	}
-	return out
+	return r.historyIndex().Objects[target.Key]
 }
 
 // LineHistory lists recorded pauses, not exact execution counts.
 func (r Replay) LineHistory(loc observer.SourceLocation) []HistoryEntry {
-	if loc.File=="" || loc.Line<=0 {return nil}
-	var out []HistoryEntry
-	for i,s:=range r.Run.Snapshots {
-		if s.Location.File!=loc.File || s.Location.Line!=loc.Line {continue}
-		r.Position=i
-		var changes []string
-		for _,row:=range r.Rows(nil) {if row.Changed {changes=append(changes,row.Path+": "+row.Before+" → "+row.Value)}}
-		label:="暂停于此行"
-		if len(changes)>0 {label+=" · "+strings.Join(changes,"; ")}
-		out=append(out,HistoryEntry{Position:i,Location:s.Location,Text:label})
-	}
-	return out
+	return r.historyIndex().Lines[lineKey{loc.File,loc.Line}]
 }
 
 var arrayPath=regexp.MustCompile(`^[A-Za-z_][A-Za-z_0-9]*(\.[A-Za-z_][A-Za-z_0-9]*|\[[0-9]+\])*$`)
