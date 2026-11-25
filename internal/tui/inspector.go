@@ -68,14 +68,14 @@ func (m *Model) handleInspector(msg tea.KeyMsg) tea.Cmd {
 				m.rangeInput=[2]string{fmt.Sprint(start),fmt.Sprint(count)}
 			}
 		}
-	case "history":
+	case "history","line-history":
 		switch k {
 		case "up":m.modalScroll=max(0,m.modalScroll-1)
 		case "down":m.modalScroll=min(m.modalScroll+1,max(0,len(m.history)-1))
 		case "home":m.modalScroll=0
 		case "end":m.modalScroll=max(0,len(m.history)-1)
 		case "enter":
-			if len(m.history)>0 {m.replay.Seek(m.history[m.modalScroll].Position);m.resetScroll();m.mode="";m.focus=1}
+			if len(m.history)>0 {m.seek(m.history[m.modalScroll].Position);if m.mode=="line-history" {m.focus=0} else {m.focus=1};m.mode=""}
 		}
 	case "range":
 		switch k {
@@ -179,8 +179,10 @@ func (m Model) inspector(w,h int) string {
 			lines=append(lines,renderTable(t,w,max(1,h-7),m.modalScroll,m.modalCol)...)
 		}
 		lines=append(lines,muted.Render(clip("←/→ 快照  ↑/↓ 滚动  [/] 列  H 历史  A 数组范围  Esc 返回",w)))
-	case "history":
-		lines=append(lines,muted.Render(clip("变量历史 · 仅可靠身份与已记录变化，非完整赋值日志",w)))
+	case "history","line-history":
+		label:="变量历史 · 仅可靠身份与已记录变化，非完整赋值日志"
+		if m.mode=="line-history" {label=fmt.Sprintf("本行历史 · %d 次记录暂停（非准确执行次数）",len(m.history))}
+		lines=append(lines,muted.Render(clip(label,w)))
 		if len(m.history)==0 {lines=append(lines,"无可确认的变化记录。")}
 		n:=max(1,h-5)
 		start:=max(0,min(m.modalScroll-n+1,max(0,len(m.history)-n)))
