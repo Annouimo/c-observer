@@ -134,7 +134,7 @@ func renderTable(t DataTable,w,h,offset,colOffset int) []string {
 	start:=min(max(1,1+colOffset),max(1,len(t.Headers)-1))
 	for i:=start;i<len(t.Headers);i++ {
 		desired:=max(8,runewidth.StringWidth(t.Headers[i]))
-		for _,r:=range t.Rows {if i<len(r) {desired=max(desired,runewidth.StringWidth(r[i].Text))}}
+		for _,r:=range t.Rows {if i<len(r) {size:=runewidth.StringWidth(r[i].Text);if r[i].Changed {size+=2};desired=max(desired,size)}}
 		cw:=min(desired,28)
 		avail:=w-used-3
 		if avail<6 {break}
