@@ -24,9 +24,25 @@ const cleanupTimeout = 2 * time.Second
 // Engine is stateless. Each Run owns its adapter, executable and capture files.
 type Engine struct{}
 
+// GDBEngine runs the same observation contract with GCC and GDB/MI on Linux.
+type GDBEngine struct{}
+
+var _ observer.Engine = GDBEngine{}
+
+func (GDBEngine) Run(ctx context.Context, config observer.LaunchConfig) observer.RunResult {
+	if runtime.GOOS != "linux" {
+		return observer.RunResult{Reason: observer.InvalidConfig, Message: "GDB observation currently supports Linux"}
+	}
+	return runEngine(ctx, config, true)
+}
+
 var _ observer.Engine = Engine{}
 
-func (Engine) Run(ctx context.Context, config observer.LaunchConfig) (result observer.RunResult) {
+func (Engine) Run(ctx context.Context, config observer.LaunchConfig) observer.RunResult {
+	return runEngine(ctx, config, false)
+}
+
+func runEngine(ctx context.Context, config observer.LaunchConfig, useGDB bool) (result observer.RunResult) {
 	limits, err := defaults(config.Limits)
 	if err != nil {
 		result.Reason, result.Message = observer.InvalidConfig, err.Error()
@@ -78,12 +94,16 @@ func (Engine) Run(ctx context.Context, config observer.LaunchConfig) (result obs
 		files[path] = string(data)
 		result.Session.Sources = append(result.Session.Sources, observer.SourceFile{Path: path, Text: string(data)})
 	}
-	compiler, err := tool(ctx, dir, config.Compiler, "clang")
+	compilerName, debuggerNames := "clang", []string{"lldb-dap", "lldb-dap-19"}
+	if useGDB {
+		compilerName, debuggerNames = "gcc", []string{"gdb"}
+	}
+	compiler, err := tool(ctx, dir, config.Compiler, compilerName)
 	if err != nil {
 		finishError(err)
 		return
 	}
-	debugger, err := tool(ctx, dir, config.Debugger, "lldb-dap", "lldb-dap-19")
+	debugger, err := tool(ctx, dir, config.Debugger, debuggerNames...)
 	if err != nil {
 		finishError(err)
 		return
@@ -125,7 +145,7 @@ func (Engine) Run(ctx context.Context, config observer.LaunchConfig) (result obs
 	}
 	identity := mainIdentity{source: source}
 	var index sourceIndex
-	if len(config.SourceMap) == 0 {
+	if !useGDB && len(config.SourceMap) == 0 {
 		index = inspectSource(ctx, compiler, dir, source, files[source], compilerArgs)
 		identity.lines = index.mainLines
 	}
@@ -139,6 +159,14 @@ func (Engine) Run(ctx context.Context, config observer.LaunchConfig) (result obs
 	input, output, stderr := filepath.Join(temp, "stdin"), filepath.Join(temp, "stdout"), filepath.Join(temp, "stderr")
 	if err := os.WriteFile(input, config.Stdin, 0600); err != nil {
 		finishError(err)
+		return
+	}
+	if useGDB {
+		run := capture{ctx: ctx, limits: limits, dir: dir, files: files,
+			config: config, result: &result, output: output, stderr: stderr}
+		if err := run.observeGDB(debugger, exe, input, temp, source); err != nil {
+			finishError(err)
+		}
 		return
 	}
 	d, err := openAdapter(debugger, dir)

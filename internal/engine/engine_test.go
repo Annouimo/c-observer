@@ -19,7 +19,7 @@ import (
 
 func realConfig(t *testing.T) observer.LaunchConfig {
 	t.Helper()
-	if os.Getenv("C_OBSERVER_REAL_DEBUGGER") != "1" {
+	if os.Getenv("C_OBSERVER_REAL_DEBUGGER") != "1" && os.Getenv("C_OBSERVER_REAL_GDB") != "1" {
 		t.Skip("set C_OBSERVER_REAL_DEBUGGER=1 to run LLDB against real C programs")
 	}
 	dir := filepath.Join(t.TempDir(), "课程 sample")
@@ -47,10 +47,17 @@ func realConfig(t *testing.T) observer.LaunchConfig {
 	}
 }
 
+func realEngine() observer.Engine {
+	if os.Getenv("C_OBSERVER_REAL_GDB") == "1" {
+		return GDBEngine{}
+	}
+	return Engine{}
+}
+
 func TestRealObservation(t *testing.T) {
 	config := realConfig(t)
 	config.KeepLocations = nil
-	result := (Engine{}).Run(context.Background(), config)
+	result := realEngine().Run(context.Background(), config)
 	if result.Reason != observer.Exited || result.ExitCode == nil || *result.ExitCode != 0 ||
 		result.CleanupError != "" {
 		t.Fatalf("run ended with %s: %s (cleanup: %s, diagnostics: %+v, snapshots: %d)",
@@ -123,7 +130,7 @@ func TestRealFailureAndStop(t *testing.T) {
 	config := realConfig(t)
 	t.Run("crash", func(t *testing.T) {
 		config.Stdin = []byte("crash 0\n")
-		result := (Engine{}).Run(context.Background(), config)
+		result := realEngine().Run(context.Background(), config)
 		if result.Reason != observer.Signaled || len(result.Snapshots) == 0 || result.CleanupError != "" {
 			t.Fatalf("unexpected crash result: %s %s, cleanup %s, %d snapshots",
 				result.Reason, result.Message, result.CleanupError, len(result.Snapshots))
@@ -132,7 +139,7 @@ func TestRealFailureAndStop(t *testing.T) {
 	t.Run("capture limit", func(t *testing.T) {
 		config.Stdin = []byte("spin 0\n")
 		config.Limits.MaxSnapshots = 1
-		result := (Engine{}).Run(context.Background(), config)
+		result := realEngine().Run(context.Background(), config)
 		if result.Reason != observer.LimitReached || len(result.Snapshots) != 1 || result.CleanupError != "" {
 			t.Fatalf("unexpected limit result: %s %s cleanup %s, %d snapshots",
 				result.Reason, result.Message, result.CleanupError, len(result.Snapshots))
@@ -144,7 +151,7 @@ func TestRealFailureAndStop(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		done := make(chan observer.RunResult, 1)
-		go func() { done <- (Engine{}).Run(ctx, config) }()
+		go func() { done <- realEngine().Run(ctx, config) }()
 		pidPath := filepath.Join(config.WorkDir, "inferior.pid")
 		deadline := time.NewTimer(8 * time.Second)
 		defer deadline.Stop()
@@ -182,7 +189,7 @@ func TestRealFailureAndStop(t *testing.T) {
 		if err := os.WriteFile(config.SourcePath, []byte("int main( {\n"), 0600); err != nil {
 			t.Fatal(err)
 		}
-		result := (Engine{}).Run(context.Background(), config)
+		result := realEngine().Run(context.Background(), config)
 		if result.Reason != observer.CompileFailed || len(result.Diagnostics) == 0 || len(result.Snapshots) != 0 {
 			t.Fatalf("unexpected compile error: %+v", result)
 		}
@@ -195,7 +202,7 @@ func TestInvalidConfig(t *testing.T) {
 		{Limits: observer.Limits{MaxSnapshots: -1}},
 		{ArrayRanges: []observer.ArrayRange{{Path: "call()", Count: 1}}},
 	} {
-		if result := (Engine{}).Run(context.Background(), config); result.Reason != observer.InvalidConfig {
+		if result := realEngine().Run(context.Background(), config); result.Reason != observer.InvalidConfig {
 			t.Fatalf("unexpected reason: %s", result.Reason)
 		}
 	}
@@ -212,7 +219,7 @@ func TestRealIdentityBoundaries(t *testing.T) {
 	}
 	config.KeepLocations = nil
 	config.ArrayRanges = nil
-	result := (Engine{}).Run(context.Background(), config)
+	result := realEngine().Run(context.Background(), config)
 	if result.Reason != observer.Exited {
 		t.Fatalf("run failed: %s %s", result.Reason, result.Message)
 	}
@@ -228,8 +235,9 @@ func TestRealIdentityBoundaries(t *testing.T) {
 				}
 			}
 			for _, variable := range frame.Variables {
-				if strings.HasPrefix(variable.Name, "shadow") && variable.IdentityReliable {
-					t.Fatalf("shadowed name was marked reliable: %s", variable.ID)
+				if strings.HasPrefix(variable.Name, "shadow") && variable.IdentityReliable &&
+					(variable.Declaration == nil || variable.Declaration.Line != 10) {
+					t.Fatalf("nested shadow was marked reliable: %s", variable.ID)
 				}
 				if variable.Name == "iteration" {
 					if variable.IdentityReliable {
@@ -257,7 +265,7 @@ func TestRealGlobalsAndStatics(t *testing.T) {
 	}
 	config.KeepLocations = nil
 	config.ArrayRanges = []observer.ArrayRange{{Path: "grid", Start: 900, Count: 1}}
-	result := (Engine{}).Run(context.Background(), config)
+	result := realEngine().Run(context.Background(), config)
 	if result.Reason != observer.Exited || !result.Session.Capabilities.Globals {
 		t.Fatalf("run: %s %s, capabilities %+v", result.Reason, result.Message, result.Session.Capabilities)
 	}
@@ -312,4 +320,31 @@ func TestRealGlobalsAndStatics(t *testing.T) {
 		t.Fatalf("missing actual observations: visits=%v total=%v cell=%v recursion=%v",
 			visits, sawTotal, sawCell, sawRecursion)
 	}
+}
+
+func TestRealMappedLineAndNonzeroExit(t *testing.T) {
+	config := realConfig(t)
+	original := filepath.Join(config.WorkDir, "student.c")
+	logical := "#include <stdio.h>\nint main(void) {\n    puts(\"mapped\");\n    return 7;\n}\n"
+	if err := os.WriteFile(original, []byte(logical), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(config.SourcePath, []byte("#line 1 \"logical.c\"\n"+logical), 0600); err != nil {
+		t.Fatal(err)
+	}
+	config.VisibleSourcePaths = []string{original}
+	config.SourceMap = map[string]string{"logical.c": original, filepath.Join(config.WorkDir, "logical.c"): original}
+	config.KeepLocations, config.ArrayRanges = nil, nil
+	result := realEngine().Run(context.Background(), config)
+	if result.Reason != observer.NonzeroExit || result.ExitCode == nil || *result.ExitCode != 7 ||
+		string(result.Output.Stdout) != "mapped\n" || result.CleanupError != "" {
+		t.Fatalf("unexpected result: %s %s, exit=%v, stdout=%q, cleanup=%q",
+			result.Reason, result.Message, result.ExitCode, result.Output.Stdout, result.CleanupError)
+	}
+	for _, s := range result.Snapshots {
+		if s.Location.File == original && s.Location.Line == 3 {
+			return
+		}
+	}
+	t.Fatalf("did not observe the mapped source line: %+v", result.Snapshots)
 }

@@ -2,7 +2,7 @@
 
 `engine.Engine` implements the shared `observer.Engine` contract using Clang and LLDB's DAP adapter. One call compiles local C, runs with preset stdin and returns a bounded replay history and separate stdout/stderr. The engine searches the selected Xcode toolchain via `xcrun` on macOS, then falls back to PATH. The launch configuration can override either executable.
 
-The engine sets entry breakpoints for function definitions in the primary C source, then uses source-level steps. This records direct calls and library-invoked user callbacks without manual stop locations. Clang source inspection is bounded and optional. When it cannot establish function locations, the engine still supports explicit source stops. It captures frame variables, C arrays and structure fields. An array range can select a page outside the default prefix. The engine matches simple outer-block variables in the original main invocation across stops using Clang declaration locations and a complete LLDB stack. It also retains identities for captured fields and array elements. Nested scopes, repeated loop locals, recursive/helper frames, ambiguous declarations, and mapped sources currently use snapshot-local identities. The engine classifies matched LLDB objects from the primary source as globals, file statics, or function statics. Their declaration identity is shared across frames, and each object appears at most once per snapshot. Global enumeration is partial because LLDB can expose different function statics at different stops. Additional backends are separate work.
+The engine sets entry breakpoints for function definitions in the primary C source, then uses source-level steps. This records direct calls and library-invoked user callbacks without manual stop locations. Clang source inspection is bounded and optional. When it cannot establish function locations, the engine still supports explicit source stops. It captures frame variables, C arrays and structure fields. An array range can select a page outside the default prefix. The engine matches simple outer-block variables in the original main invocation across stops using Clang declaration locations and a complete LLDB stack. It also retains identities for captured fields and array elements. Nested scopes, repeated loop locals, recursive/helper frames, ambiguous declarations, and mapped sources currently use snapshot-local identities. The engine classifies matched LLDB objects from the primary source as globals, file statics, or function statics. Their declaration identity is shared across frames, and each object appears at most once per snapshot. Global enumeration is partial because LLDB can expose different function statics at different stops. The shared RunResult also has a Linux GCC/GDB implementation, described below.
 
 ## Verification
 
@@ -17,3 +17,26 @@ The opt-in tests launch genuine C programs under a locally installed Clang and `
 Linux runtime was exercised with Clang and LLVM 19.1.7. The package cross-builds for macOS arm64. The maintainer confirmed the arm64 v4 trial works on macOS 27.0.1 with the Xcode LLDB adapter. The v4 changes select the macOS SDK explicitly, include DAP pathFormat in initialize, and complete breakpoint configuration before waiting for a deferred launch response. The automated tests cover both deferred and immediate launch responses. Cleanup has a bounded adapter process-group fallback. Descendants outside that group and an unresponsive adapter are not covered by the real-process tests. Output limits bound the retained prefixes, and the temporary redirection files live until the run ends. The current history budget counts the encoded snapshots, not the Go heap.
 
 To export a real replay for frontend work, set `C_OBSERVER_RECORD` to an output path when running the opt-in `TestRealObservation`. The result includes platform, stdin and source snapshots and is marked non-synthetic.
+
+## GCC/GDB on Linux
+
+Use `engine.GDBEngine{}` through the same `observer.Engine` interface.
+Defaults are `gcc` and `gdb`; compiler and debugger overrides remain available.
+MI drives the inferior and an embedded, read-only GDB Python script reads DWARF
+scopes and bounded values. This requires a Python-enabled GDB and does not
+invoke Python as a separate executable. The default `engine.Engine{}` still
+uses Clang/LLDB.
+
+```sh
+C_OBSERVER_REAL_GDB=1 go test -count=1 -v ./internal/engine
+C_OBSERVER_REAL_DEBUGGER=1 go test -count=1 -v ./internal/engine
+```
+
+The same integration tests run against both backends. They cover normal and
+nonzero exits, separate I/O, logical source mapping through #line, non-prefix
+array pages, user callbacks, recursion, scope boundaries, globals and statics,
+limits, abort, and cancellation with inferior PID verification. GDB identity
+is conservative for recursive frames and nested locals. Files not exposed by
+the selected debug symbols can be absent from snapshots. The GDB backend has
+been run on Linux with GCC 14.2 and GDB 16.3. Native Windows/MinGW and older GDB
+distributions still need separate verification.
