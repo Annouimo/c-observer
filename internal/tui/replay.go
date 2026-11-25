@@ -89,6 +89,10 @@ type VariableRow struct {
 	Key, Name, Type, Value, Detail, Before string
 	Depth int
 	Changed, Expandable, Collapsed bool
+	Reliable bool
+	Path string
+	Parent string
+	Raw observer.Variable
 }
 
 // Rows compares only against the chronologically previous snapshot. Unreliable
@@ -98,35 +102,41 @@ func (r Replay) Rows(collapsed map[string]bool) []VariableRow {
 	if s == nil { return nil }
 	p := r.Previous()
 	var rows []VariableRow
-	var walk func([]observer.Variable, []observer.Variable, string, int, bool)
-	walk = func(vars, old []observer.Variable, parent string, depth int, reliable bool) {
+	var walk func([]observer.Variable, []observer.Variable, string, string, int, bool, bool)
+	walk = func(vars, old []observer.Variable, parent, path string, depth int, reliable, identity bool) {
 		oldByID := make(map[string]observer.Variable)
 		for _, v := range old {
 			if v.ID != "" && v.IdentityReliable { oldByID[v.ID] = v }
 		}
 		for i, v := range vars {
 			key := fmt.Sprintf("%s/%d:%s", parent, i, v.ID)
+			stable := identity && v.ID!="" && v.IdentityReliable
+			if stable { key = fmt.Sprintf("%s/%q",parent,v.ID) }
+			objectPath := v.Name
+			if path!="" {
+				if v.Index!=nil {objectPath=fmt.Sprintf("%s[%d]",path,*v.Index)} else {objectPath=path+"."+v.Name}
+			}
 			o, ok := oldByID[v.ID]
 			match := reliable && v.ID != "" && v.IdentityReliable && ok && o.Kind == v.Kind && o.Type == v.Type
-			row := VariableRow{Key:key, Name:SafeText(v.Name,false), Type:SafeText(v.Type,false), Depth:depth}
+			row := VariableRow{Key:key, Name:SafeText(v.Name,false), Type:SafeText(v.Type,false), Depth:depth, Raw:v, Path:objectPath, Parent:parent, Reliable:stable}
 			if v.Index != nil { row.Name = fmt.Sprintf("[%d]", *v.Index) }
 			switch v.Status {
-			case observer.NotCaptured: row.Value = "not recorded"
-			case observer.Unavailable: row.Value = "unavailable"
+			case observer.NotCaptured: row.Value = "未记录"
+			case observer.Unavailable: row.Value = "无法读取"
 			case observer.Observed:
 				row.Value = SafeText(v.Value,false)
 				if v.Kind == observer.String && v.Value == "" { row.Value = "\"\"" }
-				if v.ValueTruncated { row.Value += " [truncated]" }
-			default: row.Value = "unknown"
+				if v.ValueTruncated { row.Value += " [截断]" }
+			default: row.Value = "未知"
 			}
 			if v.Kind == observer.Array {
 				n := "?"
 				if v.ArrayLength != nil { n = fmt.Sprint(*v.ArrayLength) }
-				row.Detail = fmt.Sprintf("%d / %s elements recorded", len(v.Children), n)
+				row.Detail = fmt.Sprintf("已记录 %d / %s 项", len(v.Children), n)
 			}
 			if !v.ChildrenComplete && (v.Kind == observer.Array || v.Kind == observer.Struct || len(v.Children)>0) {
 				if row.Detail != "" { row.Detail += "; " }
-				row.Detail += "partial"
+				row.Detail += "不完整"
 			}
 			row.Changed = match && v.Status == observer.Observed && o.Status == observer.Observed &&
 				!v.ValueTruncated && !o.ValueTruncated && len(v.Children)==0 && len(o.Children)==0 &&
@@ -138,7 +148,7 @@ func (r Replay) Rows(collapsed map[string]bool) []VariableRow {
 			if row.Expandable && !row.Collapsed {
 				var oldChildren []observer.Variable
 				if match { oldChildren=o.Children }
-				walk(v.Children,oldChildren,key,depth+1,match && v.Status==observer.Observed && o.Status==observer.Observed)
+				walk(v.Children,oldChildren,key,objectPath,depth+1,match && v.Status==observer.Observed && o.Status==observer.Observed,stable)
 			}
 		}
 	}
@@ -152,10 +162,10 @@ func (r Replay) Rows(collapsed map[string]bool) []VariableRow {
 				if f.ID==frame.ID && f.IdentityReliable { old=f.Variables; reliable=true; break }
 			}
 		}
-		walk(frame.Variables,old,"frame:"+frame.ID,0,reliable)
+		walk(frame.Variables,old,"frame:"+frame.ID,"",0,reliable,frame.ID!="" && frame.IdentityReliable)
 	}
 	var oldGlobals []observer.Variable
 	if p!=nil { oldGlobals=p.Globals }
-	walk(s.Globals,oldGlobals,"globals",0,p!=nil)
+	walk(s.Globals,oldGlobals,"globals","",0,p!=nil,true)
 	return rows
 }
