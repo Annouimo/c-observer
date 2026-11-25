@@ -26,6 +26,12 @@ type Model struct {
 	cancel context.CancelFunc
 	started time.Time
 	err string
+	mode, notice string
+	target VariableRow
+	targetPosition, modalScroll, modalCol int
+	history []HistoryEntry
+	rangeInput [2]string
+	rangeField int
 }
 type runDone struct{ result observer.RunResult }
 type clockTick time.Time
@@ -77,6 +83,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model,tea.Cmd) {
 		m.replay=Replay{Run:msg.result}
 		m.sourceScroll,m.varCursor,m.varScroll,m.consoleScroll=0,0,0,0
 		m.collapsed=map[string]bool{}
+		m.mode,m.notice="",""
+		if len(msg.result.Snapshots)==0 {m.consoleTab=1}
 	case tea.KeyMsg:
 		k:=msg.String()
 		if m.running {
@@ -87,7 +95,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model,tea.Cmd) {
 			}
 			return m,nil
 		}
+		if m.mode!="" {cmd:=m.handleInspector(msg);return m,cmd}
+		m.notice=""
 		switch k {
+		case "d","h","a":
+			if m.focus==1 && !m.replay.End() {
+				mode:=map[string]string{"d":"detail","h":"history","a":"range"}[k]
+				m.openInspector(mode)
+				m.targetPosition=m.replay.Position
+			}
 		case "esc","q","ctrl+c": return m,tea.Quit
 		case "r":
 			if m.demo {m.replay.Seek(0);m.resetScroll();m.collapsed=map[string]bool{};break}
@@ -115,7 +131,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model,tea.Cmd) {
 					// Copy map to keep Bubble Tea value updates isolated.
 					next:=make(map[string]bool,len(m.collapsed)+1)
 					for k,v:=range m.collapsed {next[k]=v}
-					next[key]=!next[key];m.collapsed=next
+					next[key]=!rows[m.varCursor].Collapsed;m.collapsed=next
 				}
 			}
 			if m.focus==2 {m.consoleTab=(m.consoleTab+1)%4;m.consoleScroll=0}
@@ -137,7 +153,27 @@ func (m *Model) clampSourceScroll() {
 		m.sourceScroll=max(-base,min(m.sourceScroll,max(0,total-n)-base))
 	}
 }
-func (m *Model) resetScroll() {m.sourceScroll,m.varCursor,m.varScroll,m.consoleScroll=0,0,0,0}
+func (m *Model) resetScroll() {
+	m.sourceScroll,m.varScroll,m.consoleScroll=0,0,0
+	rows:=m.replay.Rows(m.collapsed)
+	m.varCursor=max(0,min(m.varCursor,len(rows)-1))
+}
+
+func reasonLabel(reason observer.FinishReason) string {
+	switch reason {
+	case observer.Exited:return "正常退出"
+	case observer.NonzeroExit:return "非零退出"
+	case observer.Signaled:return "异常终止"
+	case observer.TimedOut:return "运行超时"
+	case observer.RequestTimedOut:return "调试请求超时"
+	case observer.InvalidConfig:return "配置错误"
+	case observer.Cancelled:return "已取消"
+	case observer.LimitReached:return "达到采集上限"
+	case observer.CompileFailed:return "编译失败"
+	case observer.BackendFailed:return "调试器错误"
+	default:return SafeText(string(reason),false)
+	}
+}
 
 var (
 	muted=lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light:"240",Dark:"245"})
@@ -170,13 +206,13 @@ func sourceFor(run observer.RunResult,path string) string {
 }
 func (m Model) source(w,h int) string {
 	s:=m.replay.Current()
-	lines:=[]string{head(" SOURCE",m.focus==0,w)}
-	if s==nil {return fixed(append(lines,muted.Render("No active source position.")),w,h)}
+	lines:=[]string{head(" 源代码",m.focus==0,w)}
+	if s==nil {return fixed(append(lines,muted.Render("没有当前源码位置。")),w,h)}
 	loc:=s.Location
 	lines=append(lines,muted.Render(clip(SafeText(fmt.Sprintf("%s:%d  %s",loc.File,loc.Line,loc.Function),false),w)))
 	src:=sourceFor(m.replay.Run,loc.File)
 	if loc.File=="" || src=="" || loc.Line<=0 {
-		return fixed(append(lines,clip("Unmapped: "+SafeText(loc.ReportedFile,false),w)),w,h)
+		return fixed(append(lines,clip("未映射: "+SafeText(loc.ReportedFile,false),w)),w,h)
 	}
 	all:=strings.Split(SafeText(src,true),"\n")
 	n:=max(1,h-2)
@@ -193,19 +229,19 @@ func (m Model) source(w,h int) string {
 	return fixed(lines,w,h)
 }
 func (m Model) variables(w,h int) string {
-	lines:=[]string{head(" VARIABLES",m.focus==1,w)}
+	lines:=[]string{head(" 变量",m.focus==1,w)}
 	s:=m.replay.Current()
-	if s==nil {return fixed(append(lines,muted.Render("No active variable state.")),w,h)}
-	label:="Active frame"
+	if s==nil {return fixed(append(lines,muted.Render("没有当前变量状态。")),w,h)}
+	label:="当前栈帧"
 	if len(s.Frames)>0 {
 		label=SafeText(s.Frames[0].Location.Function,false)
-		if !s.Frames[0].VariablesComplete {label+=" · partial list"}
+		if !s.Frames[0].VariablesComplete {label+=" · 列表不完整"}
 	}
-	if len(s.Globals)>0 {label+=" + globals"}
-	if !s.GlobalsComplete && m.replay.Run.Session.Capabilities.Globals {label+=" · globals partial"}
-	lines=append(lines,muted.Render(clip(label,w)))
+	if len(s.Globals)>0 {label+=" + 全局变量"}
+	if !s.GlobalsComplete && m.replay.Run.Session.Capabilities.Globals {label+=" · 全局列表不完整"}
+	lines=append(lines,muted.Render(clip(label+" · D 数据表 / H 历史",w)))
 	rows:=m.replay.Rows(m.collapsed)
-	if len(rows)==0 {return fixed(append(lines,muted.Render("No recorded variables.")),w,h)}
+	if len(rows)==0 {return fixed(append(lines,muted.Render("无已记录变量。")),w,h)}
 	n:=max(1,h-2)
 	start:=max(0,min(m.varCursor-n+1,max(0,len(rows)-n)))
 	for i:=start;i<min(len(rows),start+n);i++ {
@@ -218,6 +254,7 @@ func (m Model) variables(w,h int) string {
 		value:=r.Value
 		if r.Detail!="" {if value!="" {value+=" · "};value+=r.Detail}
 		if r.Changed {value="* "+r.Before+" → "+r.Value}
+		if r.Raw.Kind==observer.Array && len(r.Raw.Children)>0 && r.Raw.Children[0].Index!=nil {value+=fmt.Sprintf(" · [%d…]",*r.Raw.Children[0].Index)}
 		typeText:=" ["+r.Type+"]"
 		left:=clip(prefix,max(1,w/2))
 		rest:=max(0,w-runewidth.StringWidth(left)-1)
@@ -235,15 +272,15 @@ func (m Model) consoleText() string {
 	case 0:data=string(m.config.Stdin)
 	case 1:data=string(out)
 	case 2:data=string(errOut)
-	case 3:if m.config.ExpectedStdout!=nil {data=string(*m.config.ExpectedStdout)} else {data="(not supplied)"}
+	case 3:if m.config.ExpectedStdout!=nil {data=string(*m.config.ExpectedStdout)} else {data="（未提供）"}
 	}
-	if data=="" {data="(empty)"}
+	if data=="" {data="（空）"}
 	if m.consoleTab==1 && m.replay.Run.Output.StdoutTruncated || m.consoleTab==2 && m.replay.Run.Output.StderrTruncated {data+="\n[output truncated during run]"}
 	return SafeText(data,true)
 }
 func (m Model) console(w,h int) string {
-	labels:=[]string{"INPUT","STDOUT","STDERR","EXPECTED"}
-	lines:=[]string{head(" "+labels[m.consoleTab]+"  [Enter: switch]",m.focus==2,w)}
+	labels:=[]string{"输入","实际输出","错误流","预期输出"}
+	lines:=[]string{head(" "+labels[m.consoleTab]+"  [Enter 切换]",m.focus==2,w)}
 	a:=strings.Split(m.consoleText(),"\n")
 	start:=max(0,min(m.consoleScroll,max(0,len(a)-1)))
 	for _,l:=range a[start:min(len(a),start+max(0,h-1))] {lines=append(lines,clip(l,w))}
@@ -251,17 +288,17 @@ func (m Model) console(w,h int) string {
 }
 func (m Model) ending(w,h int) string {
 	r:=m.replay.Run
-	status:=fmt.Sprintf("END · %s",r.Reason)
-	if r.ExitCode!=nil {status+=fmt.Sprintf(" · exit %d",*r.ExitCode)}
+	status:=fmt.Sprintf("END · %s",reasonLabel(r.Reason))
+	if r.ExitCode!=nil {status+=fmt.Sprintf(" · 退出码 %d",*r.ExitCode)}
 	st:=warning
 	if r.Reason==observer.Exited {st=accent}
 	if r.Reason==observer.CompileFailed || r.Reason==observer.BackendFailed || r.Reason==observer.Signaled {st=failure}
-	lines:=[]string{st.Render(clip(status,w)),muted.Render(clip(fmt.Sprintf("%d recorded pauses; no active source or variables.",len(r.Snapshots)),w))}
+	lines:=[]string{st.Render(clip(status,w)),muted.Render(clip(fmt.Sprintf("已记录 %d 次暂停；无活动源码位置或变量。",len(r.Snapshots)),w))}
 	if r.Message!="" {lines=append(lines,clip(SafeText(r.Message,false),w))}
-	if r.CleanupError!="" {lines=append(lines,failure.Render(clip("Cleanup: "+SafeText(r.CleanupError,false),w)))}
+	if r.CleanupError!="" {lines=append(lines,failure.Render(clip("清理失败: "+SafeText(r.CleanupError,false),w)))}
 	if m.config.ExpectedStdout!=nil && r.Reason==observer.Exited && !r.Output.StdoutTruncated {
-		match:="Final stdout differs from expected (exact bytes)."
-		if string(r.Output.Stdout)==string(*m.config.ExpectedStdout) {match="Final stdout matches expected (exact bytes)."}
+		match:="实际输出与预期不同（逐字节比较）。"
+		if string(r.Output.Stdout)==string(*m.config.ExpectedStdout) {match="实际输出与预期一致（逐字节比较）。"}
 		lines=append(lines,clip(match,w))
 	}
 	for _,d:=range r.Diagnostics {
@@ -274,15 +311,16 @@ func (m Model) ending(w,h int) string {
 }
 func (m Model) View() string {
 	w,h:=m.width,m.height
-	if w<45 || h<14 {return "Resize terminal to at least 45 × 14. Q: quit."}
+	if w<45 || h<14 {return "请将终端调整至至少 45 × 14。Q 退出。"}
 	title:="C Observer"
-	if m.demo {title+=" · SYNTHETIC PREVIEW"}
+	if m.demo {title+=" · 合成数据预览"}
 	if m.running {
-		status:="Compiling and recording..."
-		if m.stopping {status="Stopping; waiting for debugger cleanup..."}
-		return accent.Render(title)+"\n\n"+status+"\n"+time.Since(m.started).Round(100*time.Millisecond).String()+"\n\nEsc: cancel · Q: cancel and exit"
+		status:="正在编译并采集运行状态…"
+		if m.stopping {status="正在停止，等待调试器清理…"}
+		return accent.Render(title)+"\n\n"+status+"\n"+time.Since(m.started).Round(100*time.Millisecond).String()+"\n\nEsc 取消 · Q 取消并退出"
 	}
-	if m.err!="" {return failure.Render("Invalid record: "+SafeText(m.err,false))+"\nR: retry · Q: quit"}
+	if m.err!="" {return failure.Render("运行记录无效: "+SafeText(m.err,false))+"\nR 重试 · Q 退出"}
+	if m.mode!="" {return m.inspector(w,h)}
 	// Header/footer consume three rows. The console is kept compact on wide terminals.
 	mainH:=h-4
 	var body string
@@ -297,9 +335,11 @@ func (m Model) View() string {
 		body+="\n"+m.console(w,consoleH)
 	} else if m.focus==2 {body=m.console(w,mainH)} else if m.replay.End() {body=m.ending(w,mainH)} else if m.focus==0 {body=m.source(w,mainH)} else {body=m.variables(w,mainH)}
 	n:=len(m.replay.Run.Snapshots)
-	pos:=fmt.Sprintf("Pause %d/%d",m.replay.Position+1,n)
-	if m.replay.End() {pos=fmt.Sprintf("END · %d pauses",n)}
-	help:="Home/End  R rerun  Q quit"
-	if m.demo {help="Home/End  R reset  Q quit"}
-	return accent.Render(clip(title,w))+"\n"+body+"\n"+muted.Render(clip(pos+"  ·  "+string(m.replay.Run.Reason),w))+"\n"+muted.Render(clip("←/→ step  ↑/↓ scroll  Tab focus  Enter expand/switch",w))+"\n"+muted.Render(clip(help,w))
+	pos:=fmt.Sprintf("快照 %d/%d",m.replay.Position+1,n)
+	if m.replay.End() {pos=fmt.Sprintf("END · %d 次暂停",n)}
+	help:="Home/End 首尾  R 重跑  Q 退出"
+	if m.demo {help="Home/End 首尾  R 重置  Q 退出"}
+	if m.focus==1 && !m.replay.End() {help="D 数据表  H 变量历史  A 数组范围  Q 退出"}
+	if m.notice!="" {help=m.notice}
+	return accent.Render(clip(title,w))+"\n"+body+"\n"+muted.Render(clip(pos+"  ·  "+reasonLabel(m.replay.Run.Reason),w))+"\n"+muted.Render(clip("←/→ 快照  ↑/↓ 选择  Tab 区域  Enter 展开/切换",w))+"\n"+muted.Render(clip(help,w))
 }
