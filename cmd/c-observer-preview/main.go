@@ -23,6 +23,10 @@ func main() {
 	expected:=flag.String("expected","","optional expected stdout file for live mode")
 	compiler:=flag.String("compiler","","compiler path override")
 	debugger:=flag.String("debugger","","debug adapter path override")
+	dump:=flag.Bool("dump",false,"print synthetic preview without entering an alternate terminal")
+	width:=flag.Int("width",100,"dump width in terminal cells")
+	height:=flag.Int("height",30,"dump height in terminal cells")
+	step:=flag.Int("step",1,"dump snapshot number (1-based; zero for final result)")
 	flag.Parse()
 	var model tui.Model
 	var err error
@@ -42,7 +46,13 @@ func main() {
 			err=fmt.Errorf("source, input, expected and toolchain flags require explicit -live")
 		} else {model,err=preview(*path,*setup)}
 	}
-	if err==nil {_,err=tea.NewProgram(model,tea.WithAltScreen()).Run()}
+	if err==nil && *dump {
+		if *live {err=fmt.Errorf("-dump only supports synthetic preview")} else {
+			var rendered string
+			rendered,err=model.PreviewText(*width,*height,*step)
+			if err==nil {fmt.Println(rendered)}
+		}
+	} else if err==nil {_,err=tea.NewProgram(model,tea.WithAltScreen()).Run()}
 	if err!=nil {fmt.Fprintln(os.Stderr,err);os.Exit(1)}
 }
 func preview(path string,setup bool) (tui.Model,error) {
