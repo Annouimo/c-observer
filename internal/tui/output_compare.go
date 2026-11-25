@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/mattn/go-runewidth"
 )
 
 type OutputLine struct {
@@ -67,13 +69,6 @@ func (m Model) outputComparison(w,h int) string {
 	}
 	lines=append(lines,muted.Render(clip("· 空格  ↵ 换行  \\t 制表符  \\r 回车",w)))
 	rows:=CompareOutput(*m.config.ExpectedStdout,out)
-	t:=DataTable{Headers:[]string{"行","预期","实际"}}
-	for i,r:=range rows {
-		e,a:=r.Expected,r.Actual
-		if !r.HasExpected {e="（缺行）"}
-		if !r.HasActual {a="（缺行）"}
-		t.Rows=append(t.Rows,[]Cell{{Text:fmt.Sprint(i+1)},{Text:e},{Text:a}})
-	}
 	if len(rows)==0 {lines=append(lines,"两者均为空。");return fixed(lines,w,h)}
 	// Pair lines by position (not an edit-distance alignment). Wrap long
 	// values so the entire content remains inspectable.
@@ -100,5 +95,5 @@ func (m Model) outputComparison(w,h int) string {
 }
 
 func wrapCells(text string,w int) []string {
-	return strings.Split(wrapText(text,w),"\n")
+	return strings.Split(runewidth.Wrap(text,max(1,w)),"\n")
 }
