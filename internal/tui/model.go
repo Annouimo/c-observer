@@ -99,6 +99,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model,tea.Cmd) {
 		m.notice=""
 		switch k {
 		case "d","h","a":
+			if k=="h" && m.focus==0 {
+				if snap:=m.replay.Current();snap!=nil && snap.Location.File!="" && snap.Location.Line>0 {
+					m.mode="line-history"
+					m.target=VariableRow{Path:fmt.Sprintf("%s:%d",snap.Location.File,snap.Location.Line)}
+					m.history=m.replay.LineHistory(snap.Location)
+					m.modalScroll=0
+				}
+				break
+			}
 			if m.focus==1 && !m.replay.End() {
 				mode:=map[string]string{"d":"detail","h":"history","a":"range"}[k]
 				m.openInspector(mode)
@@ -121,7 +130,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model,tea.Cmd) {
 			switch m.focus {
 			case 0: m.sourceScroll+=d; m.clampSourceScroll()
 			case 1: m.varCursor=max(0,min(m.varCursor+d,len(m.replay.Rows(m.collapsed))-1))
-			case 2: m.consoleScroll=max(0,min(m.consoleScroll+d,len(strings.Split(m.consoleText(),"\n"))-1))
+			case 2: m.consoleScroll=max(0,min(m.consoleScroll+d,len(m.consoleLines(m.consoleTab,m.consoleWidth()))-1))
 			}
 		case "enter":
 			if m.focus==1 {
@@ -273,8 +282,9 @@ func (m Model) variables(w,h int) string {
 			if hiddenChanges>0 {value=fmt.Sprintf("* %d 项变化 · %s",hiddenChanges,value)}
 		}
 		typeText:=" ["+r.Type+"]"
-		left:=clip(prefix,max(1,w/2))
-		rest:=max(0,w-runewidth.StringWidth(left)-1)
+		nameWidth:=max(1,w*37/100)
+		left:=pad(clip(prefix,nameWidth),nameWidth)
+		rest:=max(0,w-nameWidth-1)
 		line:=left+" "+clip(value+typeText,rest)
 		if r.Changed || hiddenChanges>0 {line=changed.Render(line)}
 		if m.focus==1 && i==m.varCursor {line=selected.Render(line)}
@@ -296,11 +306,19 @@ func (m Model) consoleTextFor(tab int) string {
 	if tab==1 && m.replay.Run.Output.StdoutTruncated || tab==2 && m.replay.Run.Output.StderrTruncated {data+="\n[output truncated during run]"}
 	return SafeText(data,true)
 }
+func (m Model) consoleWidth() int {
+	if m.width<86 {return m.width}
+	if m.consoleTab==0 {return m.width*55/100}
+	return m.width-m.width*55/100-1
+}
+func (m Model) consoleLines(tab,w int) []string {
+	return strings.Split(runewidth.Wrap(m.consoleTextFor(tab),max(1,w)),"\n")
+}
 func (m Model) console(w,h int) string {return m.consoleView(m.consoleTab,w,h,m.consoleScroll,m.focus==2)}
 func (m Model) consoleView(tab,w,h,scroll int,focused bool) string {
 	labels:=[]string{"输入","实际输出","错误流","预期输出"}
 	lines:=[]string{head(" "+labels[tab],focused,w)}
-	a:=strings.Split(m.consoleTextFor(tab),"\n")
+	a:=m.consoleLines(tab,w)
 	start:=max(0,min(scroll,max(0,len(a)-1)))
 	for _,l:=range a[start:min(len(a),start+max(0,h-1))] {lines=append(lines,clip(l,w))}
 	return fixed(lines,w,h)
@@ -365,6 +383,7 @@ func (m Model) View() string {
 	if m.demo {help="Home/End 首尾  R 重置  Q 退出"}
 	if m.focus==1 && !m.replay.End() {help="D 数据表  H 历史  A 范围  R 重跑/重置  Q 退出"}
 	if m.focus==2 {help="Enter 切换输入/实际输出/错误流/预期输出  Q 退出"}
+	if m.focus==0 && !m.replay.End() {help+="  H 本行历史"}
 	if m.notice!="" {help=m.notice}
 	return accent.Render(clip(title,w))+"\n"+body+"\n"+muted.Render(clip(pos+"  ·  "+reasonLabel(m.replay.Run.Reason),w))+"\n"+muted.Render(clip("←/→ 快照  ↑/↓ 选择  Tab 区域  Enter 展开/切换",w))+"\n"+muted.Render(clip(help,w))
 }
