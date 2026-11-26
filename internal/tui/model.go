@@ -18,6 +18,9 @@ type Model struct {
 	config                                        observer.LaunchConfig
 	engine                                        observer.Engine
 	demo                                          bool
+	offline                                       bool
+	record                                        *ObservationRecord
+	observerVersion, exportPath                   string
 	width, height                                 int
 	focus, sourceScroll, varCursor, consoleScroll int
 	consoleTab                                    int
@@ -86,6 +89,7 @@ func (m *Model) start() tea.Cmd {
 	m.running = true
 	m.stopping = false
 	m.err = ""
+	m.record = nil
 	engine, cfg := m.engine, m.config
 	return tea.Batch(tick(), func() tea.Msg { return runDone{engine.Run(ctx, cfg)} })
 }
@@ -116,6 +120,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.replay = NewReplay(msg.result)
+		record := captureRecord(m.observerVersion, m.config, msg.result)
+		m.record = &record
 		m.fullArrays = nil
 		m.manualRanges = nil
 		m.navigation = nil
@@ -171,6 +177,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.jumpInput = ""
 		case "?":
 			m.mode = "help"
+		case "w":
+			if m.record != nil && !m.offline && !m.demo {
+				m.exportPath = ""
+				m.mode = "record-confirm"
+			}
 		case "o":
 			if m.focus == 1 && !m.replay.End() {
 				m.mode = "object"
@@ -217,7 +228,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.settingUp = true
 			}
 		case "r":
-			if m.demo {
+			if m.demo || m.offline {
 				m.replay.Seek(0)
 				m.resetScroll()
 				break
@@ -539,6 +550,8 @@ func (m Model) View() string {
 	title := "C Observer"
 	if m.demo {
 		title += " · 合成数据预览"
+	} else if m.offline {
+		title += " · 离线记录"
 	}
 	if m.running {
 		status := "正在编译并采集运行状态…"
@@ -579,11 +592,14 @@ func (m Model) View() string {
 	}
 	pos += " " + timelineBar(m.replay.Position, n, min(16, w/6))
 	help := "Home/End 首尾  R 重跑  Q 退出"
-	if m.demo {
+	if m.demo || m.offline {
 		help = "Home/End 首尾  R 重置  Q 退出"
 	}
 	if m.focus == 1 && !m.replay.End() {
 		help = "D 详情  C 源码  I 输入输出  S 栈帧  ? 帮助"
+		if m.record != nil && !m.offline && !m.demo {
+			help = "W 导出记录  D 详情  C 源码  I 输入输出  ? 帮助"
+		}
 	}
 	if m.focus == 2 {
 		help = "Enter 切换输入输出  Esc 返回数据  ? 帮助"
@@ -594,8 +610,15 @@ func (m Model) View() string {
 	if m.standalone && m.focus == 0 {
 		help += "  E 修改配置"
 	}
+	if m.replay.End() && m.record != nil && !m.offline && !m.demo {
+		help = "W 导出记录  I 输入输出  R 重跑  Q 退出"
+	}
 	if m.notice != "" {
 		help = m.notice
 	}
-	return accent.Render(clip(title, w)) + "\n" + body + "\n" + muted.Render(clip(pos+"  ·  "+reasonLabel(m.replay.Run.Reason), w)) + "\n" + muted.Render(clip("←/→ 回放  ↑/↓ 选择  Tab 视图  F 筛选  J 跳转  R 重跑", w)) + "\n" + muted.Render(clip(help, w))
+	runHint := "R 重跑"
+	if m.demo || m.offline {
+		runHint = "R 重置"
+	}
+	return accent.Render(clip(title, w)) + "\n" + body + "\n" + muted.Render(clip(pos+"  ·  "+reasonLabel(m.replay.Run.Reason), w)) + "\n" + muted.Render(clip("←/→ 回放  ↑/↓ 选择  Tab 视图  F 筛选  J 跳转  "+runHint, w)) + "\n" + muted.Render(clip(help, w))
 }
