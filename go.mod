@@ -1,3 +1,3 @@
-module github.com/Annouimo/c-observer
+module github.com/Routilet/c-observer
 
 go 1.23
