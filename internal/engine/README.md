@@ -6,6 +6,8 @@ The engine sets entry breakpoints for function definitions in the primary C sour
 
 ## Verification
 
+The [stdin position research report](../../docs/input-progress-research.md) includes native Linux MI and DAP measurements, raw records, and an opt-in experiment runner.
+
 ```sh
 go test ./...
 go vet ./...

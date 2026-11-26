@@ -1,0 +1,15 @@
+$ ps -p 38978 -o pid,ppid,pgid,stat,comm,args
+    PID    PPID    PGID STAT COMMAND         COMMAND
+  38978       1   38978 Z    program         [program] <defunct>
+
+$ sed -n 1,10p /proc/38978/status
+Name:	program
+State:	Z (zombie)
+Tgid:	38978
+Ngid:	0
+Pid:	38978
+PPid:	1
+TracerPid:	0
+Uid:	1000	1000	1000	1000
+Gid:	1000	1000	1000	1000
+FDSize:	0
