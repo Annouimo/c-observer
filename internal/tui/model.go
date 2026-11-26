@@ -579,11 +579,10 @@ func (m Model) View() string {
 	case m.focus == 0:
 		body = m.source(w, mainH)
 	default:
-		context := m.executionContext(w)
-		body = strings.Join(context, "\n") + "\n" + m.dataFirstPanel(w, mainH-len(context))
+		body = m.observationWorkspace(w, mainH)
 	}
 	n := len(m.replay.Run.Snapshots)
-	pos := fmt.Sprintf("快照 %d/%d", m.replay.Position+1, n)
+	pos := fmt.Sprintf("%d / %d", m.replay.Position+1, n)
 	if m.replay.End() {
 		pos = fmt.Sprintf("END · %d 次暂停", n)
 	}
@@ -596,9 +595,9 @@ func (m Model) View() string {
 		help = "Home/End 首尾  R 重置  Q 退出"
 	}
 	if m.focus == 1 && !m.replay.End() {
-		help = "D 详情  C 源码  I 输入输出  S 栈帧  ? 帮助"
+		help = "Enter 详情  C 源码  I 输入输出  ? 更多"
 		if m.record != nil && !m.offline && !m.demo {
-			help = "W 导出记录  D 详情  C 源码  I 输入输出  ? 帮助"
+			help = "Enter 详情  W 导出记录  ? 更多"
 		}
 	}
 	if m.focus == 2 {
@@ -620,5 +619,5 @@ func (m Model) View() string {
 	if m.demo || m.offline {
 		runHint = "R 重置"
 	}
-	return accent.Render(clip(title, w)) + "\n" + body + "\n" + muted.Render(clip(pos+"  ·  "+reasonLabel(m.replay.Run.Reason), w)) + "\n" + muted.Render(clip("←/→ 回放  ↑/↓ 选择  Tab 视图  F 筛选  J 跳转  "+runHint, w)) + "\n" + muted.Render(clip(help, w))
+	return accent.Render(clip(title, w)) + "\n" + body + "\n" + muted.Render(clip(pos, w)) + "\n" + muted.Render(clip("←/→ 回放  ↑/↓ 选择  "+runHint+"  Q 退出", w)) + "\n" + muted.Render(clip(help, w))
 }
