@@ -48,10 +48,11 @@ type lineKey struct {
 	Line int
 }
 type HistoryIndex struct {
-	Changes []int
-	Objects map[string][]HistoryEntry
-	Lines   map[lineKey][]HistoryEntry
-	Focus   map[string]FocusRange
+	Changes      []int
+	Objects      map[string][]HistoryEntry
+	Lines        map[lineKey][]HistoryEntry
+	Focus        map[string]FocusRange
+	PreviewWidth map[string]int
 }
 
 func capLabel(s string) string {
@@ -66,7 +67,7 @@ func capLabel(s string) string {
 // bounded ancestors. It stores change/baseline events and bounds, not copies of
 // the complete variable trees. Identity remains the engine's responsibility.
 func BuildHistoryIndex(run observer.RunResult) *HistoryIndex {
-	idx := &HistoryIndex{Objects: map[string][]HistoryEntry{}, Lines: map[lineKey][]HistoryEntry{}, Focus: map[string]FocusRange{}}
+	idx := &HistoryIndex{Objects: map[string][]HistoryEntry{}, Lines: map[lineKey][]HistoryEntry{}, Focus: map[string]FocusRange{}, PreviewWidth: map[string]int{}}
 	evidence := map[string]*arrayEvidence{}
 	lastSeen := map[string]int{}
 	r := Replay{Run: run}
@@ -89,6 +90,10 @@ func BuildHistoryIndex(run observer.RunResult) *HistoryIndex {
 		changedLabels := map[string][]string{}
 		anyChange := false
 		for _, v := range rows {
+			if len(v.Raw.Children) == 0 {
+				key := layoutKey(v.Path)
+				idx.PreviewWidth[key] = max(idx.PreviewWidth[key], cellWidth(v.Value))
+			}
 			if v.Raw.Kind == observer.Array && v.Reliable {
 				if evidence[v.Key] == nil {
 					evidence[v.Key] = &arrayEvidence{}

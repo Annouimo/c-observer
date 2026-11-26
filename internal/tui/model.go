@@ -14,42 +14,43 @@ import (
 )
 
 type Model struct {
-	replay                                                   Replay
-	config                                                   observer.LaunchConfig
-	engine                                                   observer.Engine
-	demo                                                     bool
-	width, height                                            int
-	focus, sourceScroll, varCursor, varScroll, consoleScroll int
-	consoleTab                                               int
-	collapsed                                                map[string]bool
-	running, stopping, quitting                              bool
-	cancel                                                   context.CancelFunc
-	started                                                  time.Time
-	err                                                      string
-	mode, notice                                             string
-	standalone, settingUp                                    bool
-	setup                                                    SetupState
-	target                                                   VariableRow
-	targetPosition, modalScroll, modalCol                    int
-	history                                                  []HistoryEntry
-	rangeInput                                               [2]string
-	rangeField                                               int
-	displayInput                                             [4]string
-	displayFields                                            int
-	fullArrays                                               map[string]bool
-	manualRanges                                             map[string]FocusRange
-	maximized                                                bool
-	navigation                                               []int
-	navLabel                                                 string
-	sourceLine, sourceColumn                                 int
-	menuCursor                                               int
-	jumpInput                                                string
+	replay                                        Replay
+	config                                        observer.LaunchConfig
+	engine                                        observer.Engine
+	demo                                          bool
+	width, height                                 int
+	focus, sourceScroll, varCursor, consoleScroll int
+	consoleTab                                    int
+	running, stopping, quitting                   bool
+	cancel                                        context.CancelFunc
+	started                                       time.Time
+	err                                           string
+	mode, notice                                  string
+	standalone, settingUp                         bool
+	setup                                         SetupState
+	target                                        VariableRow
+	targetPosition, modalScroll, modalCol         int
+	detailTree                                    bool
+	detailValue                                   Cell
+	valueScroll                                   int
+	history                                       []HistoryEntry
+	rangeInput                                    [2]string
+	rangeField                                    int
+	displayInput                                  [4]string
+	displayFields                                 int
+	fullArrays                                    map[string]bool
+	manualRanges                                  map[string]FocusRange
+	navigation                                    []int
+	navLabel                                      string
+	sourceLine, sourceColumn                      int
+	menuCursor                                    int
+	jumpInput                                     string
 }
 type runDone struct{ result observer.RunResult }
 type clockTick time.Time
 
 func NewPreview(f Fixture) Model {
-	m := Model{replay: NewReplay(f.Run), demo: true, width: 100, height: 30, focus: 1, consoleTab: 1, collapsed: map[string]bool{}}
+	m := Model{replay: NewReplay(f.Run), demo: true, width: 100, height: 30, focus: 1, consoleTab: 1}
 	m.config.Stdin = []byte(f.Stdin)
 	if f.ExpectedStdout != nil {
 		b := []byte(*f.ExpectedStdout)
@@ -60,7 +61,7 @@ func NewPreview(f Fixture) Model {
 
 // NewLive is the integration boundary; the engine is injected by the caller.
 func NewLive(engine observer.Engine, config observer.LaunchConfig) Model {
-	return Model{engine: engine, config: config, width: 100, height: 30, focus: 1, consoleTab: 1, collapsed: map[string]bool{}}
+	return Model{engine: engine, config: config, width: 100, height: 30, focus: 1, consoleTab: 1}
 }
 
 func (m Model) Init() tea.Cmd {
@@ -121,10 +122,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.navLabel = ""
 		m.sourceLine = 0
 		m.sourceColumn = 0
-		m.sourceScroll, m.varCursor, m.varScroll, m.consoleScroll = 0, 0, 0, 0
-		m.collapsed = map[string]bool{}
+		m.sourceScroll, m.varCursor, m.consoleScroll = 0, 0, 0
 		m.mode, m.notice = "", ""
-		m.focus, m.maximized = 1, false
+		m.focus = 1
 		if len(msg.result.Snapshots) == 0 {
 			m.consoleTab = 1
 		}
@@ -156,12 +156,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.notice = ""
 		switch k {
-		case "m":
-			m.maximized = !m.maximized
 		case "c":
-			m.focus, m.maximized = 0, false
+			m.focus = 0
 		case "i":
-			m.focus, m.maximized = 2, false
+			m.focus = 2
 		case "f":
 			m.mode = "filter"
 			m.menuCursor = 0
@@ -178,8 +176,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.mode = "object"
 				m.menuCursor = 0
 			}
-		case "t":
-			m.toggleTree()
 		case "v":
 			if row, ok := m.selectedVariable(); ok {
 				m.toggleFull(row)
@@ -208,11 +204,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.targetPosition = m.replay.Position
 			}
 		case "esc":
-			if m.maximized {
-				m.maximized = false
-				break
-			}
-			if m.focus != 1 && !m.replay.End() {
+			if m.focus != 1 {
 				m.focus = 1
 				break
 			}
@@ -228,7 +220,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.demo {
 				m.replay.Seek(0)
 				m.resetScroll()
-				m.collapsed = map[string]bool{}
 				break
 			}
 			cmd := m.start()
@@ -257,7 +248,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case 0:
 				m.moveSource(d)
 			case 1:
-				m.varCursor = max(0, min(m.varCursor+d, len(m.replay.Rows(m.collapsed))-1))
+				if m.replay.End() {
+					m.moveSource(d)
+					break
+				}
+				m.varCursor = max(0, min(m.varCursor+d, len(rootRows(m.replay.Rows(nil)))-1))
 			case 2:
 				length := len(m.consoleLines(m.consoleTab, m.consoleWidth()))
 				if m.consoleTab == 4 {
@@ -287,19 +282,10 @@ func (m *Model) clampSourceScroll() {
 		m.sourceScroll = max(0, min(m.sourceScroll, len(m.replay.Run.Diagnostics)+5))
 		return
 	}
-	if s := m.replay.Current(); s != nil {
-		n := max(1, m.height-6)
-		if m.width >= 86 {
-			n -= max(4, min(7, (m.height-4)/3))
-		}
-		n = max(1, n)
-		total := len(strings.Split(sourceFor(m.replay.Run, s.Location.File), "\n"))
-		base := s.Location.Line - 1 - n/2
-		m.sourceScroll = max(-base, min(m.sourceScroll, max(0, total-n)-base))
-	}
+
 }
 func (m *Model) seek(pos int) {
-	rows := m.replay.Rows(m.collapsed)
+	rows := rootRows(m.replay.Rows(nil))
 	var key string
 	if m.varCursor >= 0 && m.varCursor < len(rows) && rows[m.varCursor].Reliable {
 		key = rows[m.varCursor].Key
@@ -309,7 +295,7 @@ func (m *Model) seek(pos int) {
 	m.sourceColumn = 0
 	m.resetScroll()
 	if key != "" {
-		for i, row := range m.replay.Rows(m.collapsed) {
+		for i, row := range rootRows(m.replay.Rows(nil)) {
 			if row.Key == key {
 				m.varCursor = i
 				break
@@ -324,8 +310,8 @@ func (m *Model) seek(pos int) {
 	}
 }
 func (m *Model) resetScroll() {
-	m.sourceScroll, m.varScroll, m.consoleScroll = 0, 0, 0
-	rows := m.replay.Rows(m.collapsed)
+	m.sourceScroll, m.consoleScroll = 0, 0
+	rows := rootRows(m.replay.Rows(nil))
 	m.varCursor = max(0, min(m.varCursor, len(rows)-1))
 }
 
@@ -446,8 +432,7 @@ func (m Model) source(w, h int) string {
 	}
 	return fixed(lines, w, h)
 }
-func (m Model) variables(w, h int) string { return m.variablePanel(w, h) }
-func (m Model) consoleText() string       { return m.consoleTextFor(m.consoleTab) }
+func (m Model) consoleText() string { return m.consoleTextFor(m.consoleTab) }
 func (m Model) consoleTextFor(tab int) string {
 	out, errOut := m.replay.Output()
 	var data string
@@ -473,15 +458,7 @@ func (m Model) consoleTextFor(tab int) string {
 	}
 	return SafeText(data, true)
 }
-func (m Model) consoleWidth() int {
-	if m.width < 86 || m.maximized || (m.replay.End() && m.consoleTab == 4) {
-		return m.width
-	}
-	if m.consoleTab == 0 {
-		return m.width / 2
-	}
-	return m.width - m.width*55/100 - 1
-}
+func (m Model) consoleWidth() int { return m.width }
 func (m Model) consoleLines(tab, w int) []string {
 	return strings.Split(runewidth.Wrap(m.consoleTextFor(tab), max(1, w)), "\n")
 }
@@ -523,12 +500,24 @@ func (m Model) ending(w, h int) string {
 		lines = append(lines, failure.Render(clip("清理失败: "+SafeText(r.CleanupError, false), w)))
 	}
 	if m.config.ExpectedStdout != nil && r.Reason == observer.Exited && !r.Output.StdoutTruncated {
-		match := "实际输出与预期不同（逐字节比较）。"
+		match := "输出有差异 · 逐字节比较"
 		if string(r.Output.Stdout) == string(*m.config.ExpectedStdout) {
-			match = "实际输出与预期一致（逐字节比较）。"
+			match = "输出一致 · 逐字节比较"
 		}
 		lines = append(lines, clip(match, w))
+		if equal, applied := sampleEqual(*m.config.ExpectedStdout, r.Output.Stdout, m.config.Comparison); applied {
+			label := "按样例规则：不一致"
+			if equal {
+				label = "按样例规则：一致"
+			}
+			lines = append(lines, clip(label, w))
+		}
 	}
+	if len(r.Output.Stdout) > 0 {
+		first, _, _ := strings.Cut(SafeText(string(r.Output.Stdout), true), "\n")
+		lines = append(lines, clip("标准输出  "+first, w))
+	}
+	lines = append(lines, muted.Render(clip("I 查看完整输入输出", w)))
 	for _, d := range r.Diagnostics {
 		at := ""
 		if d.Location != nil {
@@ -567,55 +556,18 @@ func (m Model) View() string {
 		}
 		return m.inspector(w, h)
 	}
-	// Source and console are explicit alternate views; the default is data-first.
 	mainH := h - 4
 	var body string
-	if !m.replay.End() && !m.maximized {
-		switch m.focus {
-		case 0:
-			body = m.source(w, mainH)
-		case 2:
-			body = m.console(w, mainH)
-		default:
-			context := m.executionContext(w)
-			body = strings.Join(context, "\n") + "\n" + m.dataFirstPanel(w, mainH-len(context))
-		}
-	} else if w >= 86 && !m.maximized {
-		consoleH := max(4, min(7, mainH/3))
-		if m.replay.End() && m.consoleTab == 4 {
-			consoleH = max(5, mainH*2/3)
-		}
-		topH := mainH - consoleH
-		if m.replay.End() {
-			body = m.ending(w, topH)
-		} else {
-			left := w / 2
-			right := w - left - 1
-			body = lipgloss.JoinHorizontal(lipgloss.Top, m.source(left, topH), muted.Render(strings.Repeat("│\n", topH-1)+"│"), m.variables(right, topH))
-		}
-		inputW := w / 2
-		outputW := w - inputW - 1
-		inputScroll, outputScroll := 0, 0
-		outputTab := m.consoleTab
-		if m.consoleTab == 0 {
-			inputScroll = m.consoleScroll
-			outputTab = 1
-		} else {
-			outputScroll = m.consoleScroll
-		}
-		if m.replay.End() && m.consoleTab == 4 {
-			body += "\n" + m.outputComparison(w, consoleH)
-		} else {
-			body += "\n" + lipgloss.JoinHorizontal(lipgloss.Top, m.consoleView(0, inputW, consoleH, inputScroll, m.focus == 2 && m.consoleTab == 0), muted.Render(strings.Repeat("│\n", consoleH-1)+"│"), m.consoleView(outputTab, outputW, consoleH, outputScroll, m.focus == 2 && m.consoleTab != 0))
-		}
-	} else if m.focus == 2 {
+	switch {
+	case m.focus == 2:
 		body = m.console(w, mainH)
-	} else if m.replay.End() {
+	case m.replay.End():
 		body = m.ending(w, mainH)
-	} else if m.focus == 0 {
+	case m.focus == 0:
 		body = m.source(w, mainH)
-	} else {
-		body = m.variables(w, mainH)
+	default:
+		context := m.executionContext(w)
+		body = strings.Join(context, "\n") + "\n" + m.dataFirstPanel(w, mainH-len(context))
 	}
 	n := len(m.replay.Run.Snapshots)
 	pos := fmt.Sprintf("快照 %d/%d", m.replay.Position+1, n)

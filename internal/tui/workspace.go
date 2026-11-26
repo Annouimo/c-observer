@@ -18,7 +18,7 @@ func timelineBar(pos, n, width int) string {
 	return "[" + strings.Repeat("━", done) + strings.Repeat("─", width-done) + "]"
 }
 func (m Model) selectedVariable() (VariableRow, bool) {
-	rows := m.replay.Rows(m.collapsed)
+	rows := rootRows(m.replay.Rows(nil))
 	if m.varCursor < 0 || m.varCursor >= len(rows) {
 		return VariableRow{}, false
 	}
@@ -66,19 +66,6 @@ func skipTokenCells(tokens []token, n int) []token {
 		}
 	}
 	return out
-}
-
-func (m *Model) toggleTree() {
-	r, ok := m.selectedVariable()
-	if !ok || !r.Expandable {
-		return
-	}
-	next := make(map[string]bool, len(m.collapsed)+1)
-	for k, v := range m.collapsed {
-		next[k] = v
-	}
-	next[r.Key] = !r.Collapsed
-	m.collapsed = next
 }
 
 func (m *Model) toggleFull(row VariableRow) {
@@ -187,7 +174,7 @@ func (m Model) menuOptions() []string {
 	case "filter":
 		return []string{"全部快照", "任意可靠数据变化", "当前选中变量变化", "当前选中源码行"}
 	case "object":
-		return []string{"查看数据详情", "查看变化历史", "仅导航此对象的变化", "切换自动范围 / 全部已采集", "手动设置展示范围", "调整采集范围并重跑", "展开 / 折叠树"}
+		return []string{"查看数据详情", "查看变化历史", "仅导航此对象的变化", "切换自动范围 / 全部已采集", "手动设置展示范围", "调整采集范围并重跑"}
 	case "stack":
 		var options []string
 		if s := m.replay.Current(); s != nil {
@@ -266,8 +253,6 @@ func (m *Model) handleWorkspace(msg tea.KeyMsg) tea.Cmd {
 				}
 			case 5:
 				m.openInspector("range")
-			case 6:
-				m.toggleTree()
 			}
 			m.targetPosition = m.replay.Position
 		}
@@ -418,8 +403,8 @@ func (m Model) workspaceOverlay(w, h int) string {
 			"←/→ 回放    Home/End 首尾    J 指定快照",
 			"↑/↓ 选择    Tab/Shift+Tab 切换区域",
 			"Enter 详情或确认    Esc 返回    Q 退出",
-			"M 最大化/恢复    F 导航筛选    H 历史",
-			"S 调用栈    O 对象菜单    T 树状展开",
+			"C 源码    I 输入输出    F 筛选    H 历史",
+			"S 调用栈    O 对象菜单    详情内 T 全部成员",
 			"D 数据表    V 全部/自动范围    A 采集范围",
 			"[/] 源码横向移动 / 数据表翻列",
 			"R 重跑    E 修改独立启动配置",
@@ -478,21 +463,8 @@ func (m *Model) selectHistoryTarget() {
 			continue
 		}
 		m.replay.Frame = frame
-		next := make(map[string]bool, len(m.collapsed))
-		for k, v := range m.collapsed {
-			next[k] = v
-		}
-		for parent := row.Parent; parent != ""; {
-			p, ok := findRow(all, parent)
-			if !ok {
-				break
-			}
-			next[p.Key] = false
-			parent = p.Parent
-		}
-		m.collapsed = next
-		for i, v := range m.replay.Rows(next) {
-			if v.Key == row.Key {
+		for i, root := range rootRows(all) {
+			if row.Key == root.Key || strings.HasPrefix(row.Key, root.Key+"/") {
 				m.varCursor = i
 				break
 			}

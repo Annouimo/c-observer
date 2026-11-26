@@ -11,11 +11,11 @@ import (
 )
 
 func (m *Model) openInspector(mode string) {
-	rows := m.replay.Rows(m.collapsed)
-	if m.varCursor < 0 || m.varCursor >= len(rows) {
+	target, ok := m.selectedVariable()
+	if !ok {
 		return
 	}
-	target := rows[m.varCursor]
+	m.detailTree = false
 	m.notice = ""
 	if mode == "history" && !target.Reliable {
 		m.notice = "对象身份无法确认，不能生成可靠的跨快照历史。"
@@ -31,22 +31,30 @@ func (m *Model) openInspector(mode string) {
 		m.history = m.replay.History(target)
 	}
 	if mode == "range" {
-		start := 0
-		if len(target.Raw.Children) > 0 && target.Raw.Children[0].Index != nil {
-			start = *target.Raw.Children[0].Index
-		}
-		count := m.config.Limits.MaxArrayElements
-		if count <= 0 {
-			count = 16
-		}
-		m.rangeInput = [2]string{fmt.Sprint(start), fmt.Sprint(count)}
-		m.rangeField = 0
+		m.openArrayRange(target)
 	}
+}
+
+func (m *Model) openArrayRange(row VariableRow) {
+	m.target, m.mode, m.rangeField = row, "range", 0
+	start := 0
+	if len(row.Raw.Children) > 0 && row.Raw.Children[0].Index != nil {
+		start = *row.Raw.Children[0].Index
+	}
+	count := m.config.Limits.MaxArrayElements
+	if count <= 0 {
+		count = 16
+	}
+	m.rangeInput = [2]string{fmt.Sprint(start), fmt.Sprint(count)}
 }
 
 func (m *Model) handleInspector(msg tea.KeyMsg) tea.Cmd {
 	k := msg.String()
 	if k == "esc" {
+		if m.mode == "value" {
+			m.mode = "detail"
+			return nil
+		}
 		m.mode = ""
 		m.notice = ""
 		return nil
@@ -55,6 +63,21 @@ func (m *Model) handleInspector(msg tea.KeyMsg) tea.Cmd {
 		return tea.Quit
 	}
 	switch m.mode {
+	case "value":
+		switch k {
+		case "up", "pgup":
+			step := 1
+			if k == "pgup" {
+				step = max(1, m.height-4)
+			}
+			m.valueScroll = max(0, m.valueScroll-step)
+		case "down", "pgdown":
+			step := 1
+			if k == "pgdown" {
+				step = max(1, m.height-4)
+			}
+			m.valueScroll = min(m.valueScroll+step, max(0, len(m.valueLines(m.width))-max(1, m.height-3)))
+		}
 	case "detail":
 		switch k {
 		case "left", "right", "home", "end":
@@ -73,13 +96,26 @@ func (m *Model) handleInspector(msg tea.KeyMsg) tea.Cmd {
 			m.modalScroll = max(0, m.modalScroll-1)
 		case "down":
 			if row, ok := m.inspectedRow(); ok {
-				m.modalScroll = min(m.modalScroll+1, max(0, len(m.dataTable(row, m.replay.Rows(nil)).Rows)-1))
+				m.modalScroll = min(m.modalScroll+1, max(0, len(m.detailTable(row).Rows)-1))
 			}
 		case "[":
 			m.modalCol = max(0, m.modalCol-1)
 		case "]":
 			if row, ok := m.inspectedRow(); ok {
-				m.modalCol = min(m.modalCol+1, max(0, len(m.dataTable(row, m.replay.Rows(nil)).Headers)-2))
+				m.modalCol = min(m.modalCol+1, max(0, len(m.detailTable(row).Headers)-2))
+			}
+		case "t":
+			m.detailTree = !m.detailTree
+			m.modalScroll, m.modalCol = 0, 0
+		case "enter":
+			if row, ok := m.inspectedRow(); ok {
+				t := m.detailTable(row)
+				if m.modalScroll < len(t.Rows) && len(t.Rows[m.modalScroll]) > 0 {
+					cells := t.Rows[m.modalScroll]
+					m.detailValue = cells[min(len(cells)-1, m.modalCol+1)]
+					m.valueScroll = 0
+					m.mode = "value"
+				}
 			}
 		case "v":
 			if row, ok := m.inspectedRow(); ok {
@@ -95,20 +131,17 @@ func (m *Model) handleInspector(msg tea.KeyMsg) tea.Cmd {
 				m.modalScroll = 0
 			}
 		case "a":
-			if row, ok := m.inspectedRow(); ok && row.Raw.Kind == observer.Array {
-				// Reopen from the selected object, independent of visible tree rows.
-				m.target = row
-				m.mode = "range"
-				m.rangeField = 0
-				start := 0
-				if len(row.Raw.Children) > 0 && row.Raw.Children[0].Index != nil {
-					start = *row.Raw.Children[0].Index
+			if row, ok := m.inspectedRow(); ok {
+				if m.detailTree {
+					table := m.detailTable(row)
+					if m.modalScroll < len(table.Rows) {
+						target := table.Rows[m.modalScroll][1].Key
+						row, ok = findRow(m.replay.Rows(nil), target)
+					}
 				}
-				count := m.config.Limits.MaxArrayElements
-				if count <= 0 {
-					count = 16
+				if ok && row.Raw.Kind == observer.Array {
+					m.openArrayRange(row)
 				}
-				m.rangeInput = [2]string{fmt.Sprint(start), fmt.Sprint(count)}
 			}
 		}
 	case "history", "line-history":
@@ -213,6 +246,35 @@ func (m Model) inspectedRow() (VariableRow, bool) {
 	return row, ok
 }
 
+func (m Model) detailTable(row VariableRow) DataTable {
+	all := m.replay.Rows(nil)
+	if !m.detailTree {
+		return m.dataTable(row, all)
+	}
+	table := DataTable{Headers: []string{"对象", "值", "类型"}}
+	for _, child := range all {
+		if child.Key == row.Key || strings.HasPrefix(child.Key, row.Key+"/") {
+			table.Rows = append(table.Rows, []Cell{{Text: child.Path}, cellFor(child), {Text: child.Type}})
+		}
+	}
+	return table
+}
+
+func (m Model) valueLines(width int) []string {
+	c := m.detailValue
+	value := c.Raw
+	if !c.Observed {
+		value = c.Text
+	}
+	if c.Truncated {
+		value += "\n[采集时已截断]"
+	}
+	if value == "" {
+		value = "（无显示值）"
+	}
+	return strings.Split(runewidth.Wrap(value, max(1, width)), "\n")
+}
+
 // renderTable repeats the index column while allowing horizontal column paging.
 // Display widths are measured in terminal cells, not bytes.
 func renderTable(t DataTable, w, h, offset, colOffset int) []string {
@@ -255,7 +317,7 @@ func renderTable(t DataTable, w, h, offset, colOffset int) []string {
 		widths = append(widths, cw)
 		used += cw + 3
 	}
-	draw := func(cells []Cell, header bool) string {
+	draw := func(cells []Cell, header, active bool) string {
 		var parts []string
 		for j, col := range cols {
 			cell := Cell{Text: "未记录"}
@@ -272,6 +334,9 @@ func renderTable(t DataTable, w, h, offset, colOffset int) []string {
 			} else if cell.Changed {
 				text = changed.Render(text)
 			}
+			if active && (col == start || len(cols) == 1) {
+				text = selected.Render(text)
+			}
 			parts = append(parts, text)
 		}
 		return strings.Join(parts, " │ ")
@@ -280,13 +345,13 @@ func renderTable(t DataTable, w, h, offset, colOffset int) []string {
 	for i, x := range t.Headers {
 		headers[i] = Cell{Text: x}
 	}
-	lines := []string{draw(headers, true)}
+	lines := []string{draw(headers, true, false)}
 	if h > 1 {
 		lines = append(lines, muted.Render(strings.Repeat("─", min(w, used))))
 	}
-	startRow := max(0, min(offset, max(0, len(t.Rows)-max(1, h-2))))
+	startRow := max(0, min(offset-max(1, h-2)+1, max(0, len(t.Rows)-max(1, h-2))))
 	for i := startRow; i < min(len(t.Rows), startRow+max(0, h-2)); i++ {
-		lines = append(lines, draw(t.Rows[i], false))
+		lines = append(lines, draw(t.Rows[i], false, i == offset))
 	}
 	if len(t.Rows) == 0 && len(lines) < h {
 		lines = append(lines, "无已记录子元素")
@@ -297,6 +362,16 @@ func renderTable(t DataTable, w, h, offset, colOffset int) []string {
 func (m Model) inspector(w, h int) string {
 	lines := []string{accent.Render(clip("C Observer / "+SafeText(m.target.Path, false), w))}
 	switch m.mode {
+	case "value":
+		label := m.detailValue.Path
+		if label == "" {
+			label = "选中单元格"
+		}
+		lines = append(lines, muted.Render(clip("采集原值 · "+label, w)))
+		values := m.valueLines(w)
+		start := min(m.valueScroll, max(0, len(values)-max(1, h-3)))
+		lines = append(lines, values[start:min(len(values), start+max(1, h-3))]...)
+		lines = append(lines, muted.Render("↑/↓ 滚动  Esc 返回详情"))
 	case "detail":
 		row, ok := m.inspectedRow()
 		lines = append(lines, muted.Render(clip(fmt.Sprintf("数据详情 · 快照 %d / %d", m.replay.Position+1, len(m.replay.Run.Snapshots)), w)))
@@ -304,10 +379,15 @@ func (m Model) inspector(w, h int) string {
 			lines = append(lines, "当前快照中无法确认此对象；不显示旧值。")
 		} else {
 			lines = append(lines, clip(row.Type+" · "+cellFor(row).Text, w), muted.Render(clip(m.rangeLabel(row), w)))
-			t := m.dataTable(row, m.replay.Rows(nil))
-			lines = append(lines, renderTable(t, w, max(1, h-7), m.modalScroll, m.modalCol)...)
+			t := m.detailTable(row)
+			label := "关注范围"
+			if m.detailTree {
+				label = "全部已采集成员"
+			}
+			lines = append(lines, muted.Render(clip(fmt.Sprintf("%s · %d 行", label, len(t.Rows)), w)))
+			lines = append(lines, renderTable(t, w, max(1, h-8), min(m.modalScroll, max(0, len(t.Rows)-1)), m.modalCol)...)
 		}
-		lines = append(lines, muted.Render(clip("←/→ 回放  ↑/↓ 滚动  [/] 列  V 全部/关注  H 历史  A 采集  Esc 返回", w)))
+		lines = append(lines, muted.Render(clip("←/→ 回放  ↑/↓ 选行  [/] 列  Enter 原值  T 全部成员  V 范围  H 历史  A 采集  Esc 返回", w)))
 	case "history", "line-history":
 		label := "变量历史 · 仅可靠身份与已记录变化，非完整赋值日志"
 		if m.mode == "line-history" {
