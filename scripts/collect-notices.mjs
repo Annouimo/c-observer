@@ -18,13 +18,26 @@ async function legalFiles(root, recursive = true) {
   return results.sort();
 }
 
-export async function collectNotices(destination) {
-  execFileSync("go", ["mod", "download", "all"], { stdio: "inherit" });
-  const lines = execFileSync("go", ["list", "-m", "-f", "{{if not .Main}}{{.Path}}\t{{.Version}}\t{{.Dir}}{{end}}", "all"], { encoding: "utf8" });
+export async function collectNotices(destination, targets) {
+  if (!targets?.length) throw Error("No distribution targets specified");
+  // The full module graph includes test-only and platform-exclusive dependencies.
+  // Collect the union of packages required by the actual shipped builds instead.
+  // A newly shipped target is automatically included and missing licenses still fail.
+  const modules = new Map();
+  for (const target of targets) {
+    const lines = execFileSync("go", ["list", "-deps", "-f", "{{with .Module}}{{if not .Main}}{{.Path}}\\t{{.Version}}\\t{{.Dir}}{{end}}{{end}}", "./cmd/c-observer"], {
+      encoding: "utf8", env: { ...process.env, ...target, CGO_ENABLED: "0" }
+    });
+    for (const line of lines.split("\n").filter(Boolean)) {
+      const [name, version, dir] = line.split("\\t");
+      if (!name || !version || !dir) throw Error("Incomplete module information: " + line);
+      modules.set(name + " " + version, dir);
+    }
+  }
   const sections = [
     "# Third-party licenses and notices",
     "",
-    "This distribution includes native Go binaries. The following upstream legal texts are retained from the Go toolchain and the Go module dependency graph, including modules that may not be linked in every target. External C compilers and debuggers are not bundled.",
+    "This distribution includes native Go binaries. The following upstream legal texts are retained from the Go toolchain and the union of Go package dependencies of the shipped build targets. External C compilers and debuggers are not bundled.",
     ""
   ];
   async function append(label, root, recursive) {
@@ -40,9 +53,8 @@ export async function collectNotices(destination) {
   const goroot = execFileSync("go", ["env", "GOROOT"], { encoding: "utf8" }).trim();
   const goversion = execFileSync("go", ["version"], { encoding: "utf8" }).trim();
   await append(goversion, goroot, false);
-  for (const line of lines.split("\n").filter(Boolean)) {
-    const [name, version, dir] = line.split("\t");
-    await append(name + " " + version, dir, true);
+  for (const [label, dir] of [...modules].sort(([a],[b]) => a.localeCompare(b))) {
+    await append(label, dir, true);
   }
   await fs.writeFile(destination, sections.join("\n") + "\n");
 }

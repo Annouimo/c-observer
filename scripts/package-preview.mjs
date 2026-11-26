@@ -19,7 +19,7 @@ const platforms = [
 await fs.mkdir(out, { recursive: true });
 await fs.mkdir(pkg); // refuse to overwrite a prior build
 await fs.copyFile("LICENSE",path.join(pkg,"LICENSE"));
-await collectNotices(path.join(pkg,"THIRD_PARTY_NOTICES.txt"));
+await collectNotices(path.join(pkg,"THIRD_PARTY_NOTICES.txt"), platforms.map(([GOOS, GOARCH]) => ({ GOOS, GOARCH })));
 const manifest = { schemaVersion: 1, version, sessionSchemaVersions: [1], platforms: {} };
 for (const [goos, goarch, os, arch] of platforms) {
   const target = os + "-" + arch;
