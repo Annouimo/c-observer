@@ -68,4 +68,6 @@ jobs:
           echo "C_OBSERVER_TEST_CLANG=$compiler" >> "$GITHUB_ENV"
           echo "C_OBSERVER_TEST_LLDB=$debugger" >> "$GITHUB_ENV"
       - run: go mod tidy
-      - run: C_OBSERVER_REAL_DEBUGGER=1 go test -v -run '^TestRealEngineReplay$' ./internal/tui
+      - run: C_OBSERVER_REAL_DEBUGGER=1 go test -v -run '^TestRealEngineReplay
+ ./internal/tui
+      - run: C_OBSERVER_REAL_DEBUGGER=1 go test -v ./internal/engine

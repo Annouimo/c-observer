@@ -134,7 +134,7 @@ jobs:
       - name: Verify native executable from installed package
         run: |
           set -euo pipefail
-          files=(release/*.tgz)
+          files=("$PWD"/release/*.tgz)
           test "${#files[@]}" = 1
           npm install --prefix "$RUNNER_TEMP/native-install" --no-save --ignore-scripts --no-audit --no-fund "${files[0]}"
           ROOT="$RUNNER_TEMP/native-install/node_modules/@annouimo/c-observer" node --input-type=module - <<'NODE'

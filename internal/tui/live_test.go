@@ -51,11 +51,22 @@ int main(void) {
 		t.Fatal("real result did not enter replay")
 	}
 	seenArray := false
+	seenReliable := false
+	seenFocus := false
+	seenChange := false
 	for pos := range result.Snapshots {
 		m.seek(pos)
 		for _, r := range m.replay.Rows(nil) {
 			if r.Name == "a" && r.Raw.Kind == observer.Array && len(r.Raw.Children) > 0 {
 				seenArray = true
+				if r.Reliable {
+					seenReliable = true
+					f := m.displayFocus(r)
+					if f.Automatic && f.Rows.Lo == 0 && f.Rows.Hi == 4 { seenFocus = true }
+				}
+				for _, child := range m.replay.Rows(nil) {
+					if child.Parent == r.Key && child.Changed { seenChange = true }
+				}
 				if !r.Reliable && m.displayFocus(r).Automatic {
 					t.Fatal("unreliable real identity cropped")
 				}
@@ -71,8 +82,8 @@ int main(void) {
 			}
 		}
 	}
-	if !seenArray {
-		t.Fatal("real array not captured")
+	if !seenArray || !seenReliable || !seenFocus || !seenChange {
+		t.Fatalf("real adaptive focus: array=%v reliable=%v focus=%v change=%v", seenArray, seenReliable, seenFocus, seenChange)
 	}
 	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnd})
 	m = next.(Model)
