@@ -6,9 +6,9 @@
 
 - npm 包：`@routilet/c-observer`（MIT），包含原生二进制、manifest、SHA256 及许可证；不包含生命周期安装脚本。独立归档和 npm 包共享同一次构建。
 - 支持 macOS arm64/x64（LLDB）、Linux x64（GDB/LLDB）、Windows x64（GDB）。GDB 需 Python 支持，实际工具链需已安装；不扫描 IDE、不改 PATH、不承诺所有 Windows Unicode 路径。
-- GitHub Actions `publish-npm.yml`：`DRY_RUN` 默认生成私有包并验证公开元数据；main 人工触发 `PUBLISH_LATEST` + 正式版本发布 latest；`PUBLISH_NEXT` 只接受显式预发行版本并发布 next。版本已占用时拒绝发布。发布需通过打包、Go 测试/静态检查、四平台原生安装和 SHA256 校验。
+- GitHub Actions `publish-npm.yml`：正式版本由根目录 `VERSION` 声明。提升版本号并合入 main 后自动检查 npm、构建、测试并发布 latest；版本已发布则跳过，禁止覆盖或倒退稳定版本。PR 仅 DRY_RUN，手动 AUTO/PUBLISH_LATEST 用于重试；PUBLISH_NEXT 仅人工指定显式预发行版本并发布 next。查询失败时停止，不视作版本未发布。发布仍需通过打包、Go 测试/静态检查、四平台原生安装和 SHA256 校验。
 - Trusted Publishing：npm 包配置 Organization Routilet、Repository c-observer、Workflow publish-npm.yml、Environment 留空；无需长期 token。若授权失败，由维护者检查 npm 设置，不绕过权限。
-- 发布顺序：先 Observer 0.1.0，确认 npm registry 可安装，再发布绑定该正式依赖的 Companion 0.2.8，最后发布 Launcher 0.3.0。
+- 跨仓库发布顺序：先发布需要的新 Observer / C Exam Kit 版本并确认 npm 可安装，再合入声明兼容依赖的 Companion 版本。Launcher 在真实公开 npm 安装验证通过后自动发行。
 - CI 不等于实机视觉验收。数据优先重构 5a5cd2c 的真实 Windows/Linux GDB、Linux LLDB、Companion 装配回放及四平台原生安装均通过（45778124229、45778124197、45778124219）。稳定版工作流改动须重新测试。
 
 ## 许可
