@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/Routilet/c-observer/internal/engine"
 	"github.com/Routilet/c-observer/internal/observer"
 	"github.com/Routilet/c-observer/internal/session"
 	"github.com/Routilet/c-observer/internal/tui"
@@ -25,6 +24,7 @@ func run(args []string, out io.Writer) error {
 	versionOnly := flags.Bool("version",false,"print version")
 	capabilities := flags.Bool("capabilities",false,"print machine-readable protocol capabilities")
 	sessionPath := flags.String("session","","launch from a versioned session JSON file")
+	backend := flags.String("backend","auto","auto, gdb or lldb")
 	compiler := flags.String("compiler","","compiler path or name")
 	debugger := flags.String("debugger","","debugger path or name")
 	flags.Usage = func() {
@@ -37,27 +37,29 @@ func run(args []string, out io.Writer) error {
 	}
 	if *versionOnly {fmt.Fprintln(out,version);return nil}
 	if *capabilities {
-		backends:=[]string{}
-		if runtime.GOOS=="darwin" || runtime.GOOS=="linux" {backends=append(backends,"lldb-dap")}
+		backends:=supportedBackends(runtime.GOOS)
 		return json.NewEncoder(out).Encode(map[string]any{"version":version,"sessionSchemaVersions":[]int{session.Version},"platform":runtime.GOOS,"arch":runtime.GOARCH,"backends":backends})
 	}
-	if runtime.GOOS!="darwin" && runtime.GOOS!="linux" {return fmt.Errorf("current build supports LLDB on macOS/Linux only")}
+	if len(supportedBackends(runtime.GOOS))==0 {return fmt.Errorf("unsupported platform: %s",runtime.GOOS)}
+	if *backend!="auto" && *backend!="gdb" && *backend!="lldb" {return fmt.Errorf("invalid backend: %s",*backend)}
 	var model tui.Model
 	if *sessionPath!="" {
-		if flags.NArg()!=0 || *compiler!="" || *debugger!="" {return fmt.Errorf("--session cannot be combined with source or tool overrides")}
+		if flags.NArg()!=0 || *compiler!="" || *debugger!="" || *backend!="auto" {return fmt.Errorf("--session cannot be combined with source or tool overrides")}
 		cfg,err:=session.Load(*sessionPath)
 		if err!=nil {return err}
-		model=tui.NewLive(engine.Engine{},cfg)
+		if _,err:=chooseBackend(runtime.GOOS,cfg.Backend,cfg.Compiler,cfg.Debugger,hasTool);err!=nil{return err}
+		model=tui.NewLive(selectedEngine{},cfg)
 	} else {
 		if flags.NArg()>1 {return fmt.Errorf("expected one C source path")}
-		cfg:=observer.LaunchConfig{Compiler:*compiler,Debugger:*debugger}
+		cfg:=observer.LaunchConfig{Backend:*backend,Compiler:*compiler,Debugger:*debugger}
+		if _,err:=chooseBackend(runtime.GOOS,cfg.Backend,cfg.Compiler,cfg.Debugger,hasTool);err!=nil{return err}
 		if flags.NArg()==1 {
 			p,err:=filepath.Abs(flags.Arg(0))
 			if err!=nil {return err}
 			if strings.ToLower(filepath.Ext(p))!=".c" {return fmt.Errorf("only C source files are supported")}
 			cfg.SourcePath,cfg.WorkDir=p,filepath.Dir(p)
 		}
-		model=tui.NewSetup(engine.Engine{},cfg)
+		model=tui.NewSetup(selectedEngine{},cfg)
 	}
 	_,err:=tea.NewProgram(model,tea.WithAltScreen()).Run()
 	return err

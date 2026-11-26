@@ -19,3 +19,6 @@ JSON 对象：
 Companion 从同一次装配生成观察源码与冻结的用户源码，通过 #line 和 sourceMap 对应；不能使用后来修改的磁盘源码冒充测试时的版本。观察构建 -g -O0 与正式评测独立，不能替代 OJ 判定。首版必须验证 LLDB 的辅助函数跳过与链接参数；GDB 适配另行验收。测试详情入口须明确观察的是当前源码还是先前测试版本。
 
 发行：npm 包内直接包含原生二进制及 manifest.json，无安装脚本；GitHub Release 使用相同构建产物。旧 launcher 已使用 npm install --ignore-scripts，不新增专属安装管理。Companion 通过运行时模块解析找到 manifest，并按 Node platform/arch 选择，检查 --capabilities 协议；不存在或不支持平台时正常降级。首版发行门槛为 LLDB 支持平台的实际运行、Companion 联调及现有启动器升级；Windows/GDB 不阻塞首发。
+
+### 后端选择（下一版）
+Session v1 新增可选 `backend`：`auto`（或省略）、`gdb`、`lldb`。仅新版本支持该字段，旧程序严格拒绝未知字段。CLI `--backend` 仅独立运行使用；Session 自带配置。Windows x64 使用 GDB，macOS LLDB，Linux 自动按指定工具或 PATH 选择，显式选择优先。不扫描 IDE、不自动安装工具链。`--capabilities` 仅报告构建支持，非本机调试器自检。Windows 优先 GCC 同目录 GDB；实际可用性由运行检查决定。尚待跨平台联调与发行验收。

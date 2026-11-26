@@ -19,6 +19,7 @@ const maxSample = 4 << 20
 
 type File struct {
 	SchemaVersion int               `json:"schemaVersion"`
+	Backend string `json:"backend,omitempty"`
 	SourcePath string               `json:"sourcePath"`
 	WorkDir string                  `json:"workDir"`
 	VisibleSourcePaths []string     `json:"visibleSourcePaths,omitempty"`
@@ -95,6 +96,11 @@ func Load(path string) (observer.LaunchConfig, error) {
 	for _, tool := range []string{f.Compiler,f.Debugger} {
 		if strings.ContainsAny(tool,"/\\") && !filepath.IsAbs(tool) { return cfg, fmt.Errorf("tool path must be absolute: %s",tool) }
 	}
+	switch f.Backend {
+	case "", "auto", "gdb", "lldb":
+	default: return cfg, fmt.Errorf("unsupported backend: %q", f.Backend)
+	}
+	cfg.Backend = f.Backend
 	cfg.Compiler, cfg.Debugger = f.Compiler,f.Debugger
 	cfg.CompilerArgs = append([]string(nil), f.CompilerArgs...)
 	cfg.Stdin, err = readRegular(resolve(f.StdinFile),maxSample)

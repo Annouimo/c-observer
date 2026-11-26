@@ -9,6 +9,7 @@ type Engine interface {
 }
 
 type LaunchConfig struct {
+	Backend string // empty or auto, gdb, lldb
 	SourcePath         string
 	WorkDir            string
 	VisibleSourcePaths []string
