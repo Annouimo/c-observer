@@ -1,0 +1,192 @@
+name: Prepare and publish Observer npm preview
+on:
+  pull_request:
+    branches: [main, feat/tui]
+    paths:
+      - '.github/workflows/publish-npm.yml'
+      - 'scripts/**'
+      - 'LICENSE'
+      - 'docs/npm-readme.md'
+      - 'go.mod'
+      - 'go.sum'
+      - 'cmd/c-observer/**'
+      - 'internal/**'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "DRY_RUN: private tarball; BOOTSTRAP_PACK: first manual publish tarball; PUBLISH_NEXT: OIDC preview"
+        type: choice
+        default: DRY_RUN
+        required: true
+        options: [DRY_RUN, BOOTSTRAP_PACK, PUBLISH_NEXT]
+      version:
+        description: "Explicit prerelease (e.g. 0.1.0-beta.1); stable release is not enabled"
+        required: true
+        type: string
+        default: '0.1.0-beta.1'
+permissions:
+  contents: read
+concurrency:
+  group: observer-npm-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    env:
+      MODE: ${{ inputs.mode || (github.event_name == 'pull_request' && github.event.pull_request.number == 1 && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'feat/tui' && 'BOOTSTRAP_PR') || 'DRY_RUN' }}
+      VERSION: ${{ inputs.version || (github.event_name == 'pull_request' && github.event.pull_request.number == 1 && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'feat/tui' && '0.1.0-beta.2') || '0.1.0-dev.1' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Guard release mode and version
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc|dev)\.[0-9]+$ ]]
+          if [[ "$MODE" == BOOTSTRAP_PR ]]; then
+            # Owner-approved second preview: create a manual-publication artifact.
+            # The PR never receives an OIDC token or publishes to the registry.
+            test "$GITHUB_EVENT_NAME" = pull_request
+            test "$GITHUB_REF" = refs/pull/1/merge
+            test "$GITHUB_HEAD_REF" = feat/tui
+            test "$VERSION" = 0.1.0-beta.2
+            test -s LICENSE
+          elif [[ "$MODE" != DRY_RUN ]]; then
+            test "$GITHUB_REF" = refs/heads/main
+            test -s LICENSE
+          fi
+      - run: go test ./...
+      - run: go vet ./...
+      - name: Package native binaries
+        run: |
+          set -euo pipefail
+          args=()
+          if [[ "$MODE" != DRY_RUN ]]; then args+=(--publishable); fi
+          node scripts/package-preview.mjs "$VERSION" "$RUNNER_TEMP/observer-dist" "${args[@]}"
+      - name: Verify actual installed tarball
+        run: |
+          set -euo pipefail
+          file="$(find "$RUNNER_TEMP/observer-dist" -maxdepth 1 -name '*.tgz' -print -quit)"
+          test -n "$file"
+          npm install --prefix "$RUNNER_TEMP/observer-install" --no-save --ignore-scripts --no-audit --no-fund "$file"
+          root="$RUNNER_TEMP/observer-install/node_modules/@routilet/c-observer"
+          binary="$root/bin/linux-x64/c-observer"
+          test -x "$binary"
+          test "$("$binary" --version)" = "$VERSION"
+          "$binary" --capabilities
+          ROOT="$root" node --input-type=module - <<'NODE'
+          import fs from "node:fs";
+          import path from "node:path";
+          import {createHash} from "node:crypto";
+          const root=process.env.ROOT;
+          const pkg=JSON.parse(fs.readFileSync(path.join(root,"package.json")));
+          const m=JSON.parse(fs.readFileSync(path.join(root,"manifest.json")));
+          if(pkg.name!=="@routilet/c-observer" || pkg.version!==process.env.VERSION || m.version!==pkg.version || pkg.scripts) throw Error("unexpected package metadata");
+          if(pkg.repository?.url!=="git+https://github.com/Routilet/c-observer.git") throw Error("GitHub provenance repository mismatch");
+          if(process.env.MODE==="DRY_RUN" ? pkg.private!==true : pkg.private===true || pkg.publishConfig?.tag!=="next") throw Error("incorrect publication metadata");
+          if(pkg.license!=="MIT" || !fs.existsSync(path.join(root,"LICENSE")) || !fs.existsSync(path.join(root,"THIRD_PARTY_NOTICES.txt"))) throw Error("license files missing");
+          for(const p of Object.values(m.platforms)) {
+            const digest=createHash("sha256").update(fs.readFileSync(path.join(root,p.executable))).digest("hex");
+            if(digest!==p.sha256) throw Error("binary digest mismatch");
+          }
+          NODE
+          (cd "$RUNNER_TEMP/observer-dist"; sha256sum *.tgz *.tar.gz > SHA256SUMS)
+      - name: Verify publishable metadata without publishing
+        if: env.MODE == 'DRY_RUN'
+        run: |
+          set -euo pipefail
+          node scripts/package-preview.mjs "$VERSION" "$RUNNER_TEMP/observer-public-check" --publishable
+          file="$(find "$RUNNER_TEMP/observer-public-check" -maxdepth 1 -name '*.tgz' -print -quit)"
+          npm install --prefix "$RUNNER_TEMP/observer-public-install" --no-save --ignore-scripts --no-audit --no-fund "$file"
+          ROOT="$RUNNER_TEMP/observer-public-install/node_modules/@routilet/c-observer" node --input-type=module - <<'NODE'
+          import fs from "node:fs";
+          import path from "node:path";
+          const root=process.env.ROOT;
+          const p=JSON.parse(fs.readFileSync(path.join(root,"package.json")));
+          if(p.private===true || p.license!=="MIT" || p.publishConfig?.access!=="public" || p.publishConfig?.tag!=="next" || p.scripts) throw Error("unexpected public metadata");
+          if(p.repository?.url!=="git+https://github.com/Routilet/c-observer.git") throw Error("GitHub provenance repository mismatch");
+          for(const name of ["LICENSE","THIRD_PARTY_NOTICES.txt","manifest.json"]) if(!fs.statSync(path.join(root,name)).size) throw Error("missing "+name);
+          NODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: observer-npm-${{ env.VERSION }}
+          path: |
+            ${{ runner.temp }}/observer-dist/*.tgz
+            ${{ runner.temp }}/observer-dist/*.tar.gz
+            ${{ runner.temp }}/observer-dist/SHA256SUMS
+          if-no-files-found: error
+  native-install:
+    needs: pack
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    env:
+      VERSION: ${{ inputs.version || (github.event_name == 'pull_request' && github.event.pull_request.number == 1 && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'feat/tui' && '0.1.0-beta.2') || '0.1.0-dev.1' }}
+    steps:
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: observer-npm-${{ env.VERSION }}
+          path: release
+      - name: Verify native executable from installed package
+        run: |
+          set -euo pipefail
+          files=("$PWD"/release/*.tgz)
+          test "${#files[@]}" = 1
+          npm install --prefix "$RUNNER_TEMP/native-install" --no-save --ignore-scripts --no-audit --no-fund "${files[0]}"
+          ROOT="$RUNNER_TEMP/native-install/node_modules/@routilet/c-observer" node --input-type=module - <<'NODE'
+          import fs from "node:fs";
+          import path from "node:path";
+          import {execFileSync} from "node:child_process";
+          import {createHash} from "node:crypto";
+          const root=process.env.ROOT;
+          const m=JSON.parse(fs.readFileSync(path.join(root,"manifest.json")));
+          const entry=m.platforms[process.platform+"-"+process.arch];
+          if(!entry) throw Error("missing native build");
+          const bin=path.join(root,entry.executable);
+          if(createHash("sha256").update(fs.readFileSync(bin)).digest("hex")!==entry.sha256) throw Error("digest mismatch");
+          if(execFileSync(bin,["--version"],{encoding:"utf8"}).trim()!==process.env.VERSION) throw Error("version mismatch");
+          const caps=JSON.parse(execFileSync(bin,["--capabilities"],{encoding:"utf8"}));
+          if(!caps.sessionSchemaVersions.includes(1) || !caps.backends.length) throw Error("missing capabilities");
+          console.log(process.platform,process.arch,caps);
+          NODE
+  publish-next:
+    needs: [pack, native-install]
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'PUBLISH_NEXT'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - run: npm install --global 'npm@^11.21.0'
+      - uses: actions/download-artifact@v4
+        with:
+          name: observer-npm-${{ inputs.version }}
+          path: release
+      - name: Publish the verified tarball to next only
+        run: |
+          set -euo pipefail
+          cd release
+          sha256sum -c SHA256SUMS
+          shopt -s nullglob
+          files=(*.tgz)
+          test "${#files[@]}" = 1
+          npm publish "./${files[0]}" --access public --tag next

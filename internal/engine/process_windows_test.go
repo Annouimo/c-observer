@@ -36,9 +36,11 @@ func TestWindowsManagedProcessStopsDescendants(t *testing.T) {
 	case "parent":
 		child := exec.Command(os.Args[0], "-test.run=^TestWindowsManagedProcessStopsDescendants$")
 		child.Env = append(os.Environ(), helper+"=child")
-		if err := child.Start(); err != nil {
+		_, releaseChild, err := startManagedProcess(child)
+		if err != nil {
 			t.Fatal(err)
 		}
+		defer releaseChild()
 		if err := os.WriteFile(os.Getenv("C_OBSERVER_JOB_TEST_PID"), []byte(strconv.Itoa(child.Process.Pid)), 0600); err != nil {
 			t.Fatal(err)
 		}

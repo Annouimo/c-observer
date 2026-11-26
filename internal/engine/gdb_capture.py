@@ -33,24 +33,21 @@ def _path(path):
 
 
 def _windows_function_breakpoints():
-    # On native Windows, rbreak can return no locations for a relative DWARF
-    # filename even though GDB has the source's function symbols.
-    visible = False
-    count = 0
-    for line in gdb.execute("info functions", to_string=True).splitlines():
-        if line.startswith("File ") and line.endswith(":"):
-            visible = _path(line[5:-1]) in _visible
-        elif line == "Non-debugging symbols:":
-            break
-        elif visible:
-            match = re.match(r"^\d+:\s+.*?\b([A-Za-z_][A-Za-z_0-9]*)\s*\(", line)
-            if match and match[1] != "main":
-                symbol = gdb.lookup_static_symbol(match[1]) or gdb.lookup_global_symbol(match[1])
-                if symbol and symbol.symtab and _path(symbol.symtab.fullname()) in _visible:
-                    gdb.Breakpoint(function=match[1], internal=True)
-                    count += 1
-                    if count >= 255:
-                        break
+    # Native GDB's rbreak can miss relative DWARF paths. Query the symbol
+    # table through MI so the result is independent of console formatting.
+    if not hasattr(gdb, "execute_mi"):
+        return
+    result = gdb.execute_mi("-symbol-info-functions", "--max-results", "256")
+    names = {"main"}
+    for file in result.get("symbols", {}).get("debug", []):
+        if not any(_path(file.get(key)) in _visible for key in ("filename", "fullname")):
+            continue
+        for item in file.get("symbols", []):
+            name = item["name"]
+            if name not in names:
+                gdb.Breakpoint(function=name, internal=True)
+                names.add(name)
+
 
 def observer_init(options):
     global _opts, _visible

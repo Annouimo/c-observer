@@ -13,7 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Annouimo/c-observer/internal/observer"
+	"github.com/Routilet/c-observer/internal/observer"
+	"github.com/Routilet/c-observer/internal/session"
 )
 
 func realConfig(t *testing.T) observer.LaunchConfig {
@@ -328,19 +329,40 @@ func TestRealGlobalsAndStatics(t *testing.T) {
 	}
 }
 
-func TestRealMappedLineAndNonzeroExit(t *testing.T) {
+func TestRealMappedSessionAndNonzeroExit(t *testing.T) {
 	config := realConfig(t)
 	original := filepath.Join(config.WorkDir, "student.c")
-	logical := "#include <stdio.h>\nint main(void) {\n    puts(\"mapped\");\n    return 7;\n}\n"
+	logical := "#include <stdio.h>\n#include <math.h>\nint main(void) {\n    puts(\"mapped\");\n    volatile double value = 4;\n    return sqrt(value) == 2 ? 7 : 1;\n}\n"
 	if err := os.WriteFile(original, []byte(logical), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(config.SourcePath, []byte("#line 1 \"logical.c\"\n"+logical), 0600); err != nil {
 		t.Fatal(err)
 	}
-	config.VisibleSourcePaths = []string{original}
-	config.SourceMap = map[string]string{"logical.c": original, filepath.Join(config.WorkDir, "logical.c"): original}
-	config.KeepLocations, config.ArrayRanges = nil, nil
+	sample := "sample.in"
+	if err := os.WriteFile(filepath.Join(config.WorkDir, sample), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(session.File{
+		SchemaVersion:      1,
+		SourcePath:         filepath.Base(config.SourcePath),
+		WorkDir:            ".",
+		VisibleSourcePaths: []string{filepath.Base(original)},
+		SourceMap:          map[string]string{"logical.c": filepath.Base(original)},
+		CompilerArgs:       []string{"-lm"},
+		StdinFile:          sample,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(config.WorkDir, "session.json")
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	config, err = session.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
 	result := realEngine().Run(context.Background(), config)
 	if result.Reason != observer.NonzeroExit || result.ExitCode == nil || *result.ExitCode != 7 ||
 		string(result.Output.Stdout) != testOutput("mapped\n") || result.CleanupError != "" {
@@ -348,7 +370,7 @@ func TestRealMappedLineAndNonzeroExit(t *testing.T) {
 			result.Reason, result.Message, result.ExitCode, result.Output.Stdout, result.CleanupError)
 	}
 	for _, s := range result.Snapshots {
-		if s.Location.File == original && s.Location.Line == 3 {
+		if s.Location.File == original && s.Location.Line == 4 {
 			return
 		}
 	}
@@ -360,4 +382,50 @@ func testOutput(text string) string {
 		return strings.ReplaceAll(text, "\n", "\r\n")
 	}
 	return text
+}
+
+func TestRealMappedCallbackAndIdentity(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Getenv("C_OBSERVER_REAL_DEBUGGER") != "1" {
+		t.Skip("requires the real LLDB backend")
+	}
+	config := realConfig(t)
+	user := filepath.Join(config.WorkDir, "frozen.c")
+	original := "static int compare(int x) { return x + 1; }\n" +
+		"int main(void) {\n    int values[2] = { 28, 0 };\n" +
+		"    values[0] = helper(compare, values[0]);\n    return values[0] != 29;\n}\n"
+	assembled := "#line 1 \"preset/helper.c\"\nstatic int helper(int (*fn)(int), int x) { return fn(x); }\n" +
+		"#line 1 \"student.c\"\n" + original
+	for file, text := range map[string]string{user: original, config.SourcePath: assembled} {
+		if err := os.WriteFile(file, []byte(text), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	config.VisibleSourcePaths = []string{user}
+	config.SourceMap = map[string]string{"student.c": user, filepath.Join(config.WorkDir, "student.c"): user}
+	config.KeepLocations, config.ArrayRanges = nil, nil
+	result := (Engine{}).Run(context.Background(), config)
+	if result.Reason != observer.Exited || result.CleanupError != "" {
+		t.Fatalf("mapped run: %s %s cleanup %q", result.Reason, result.Message, result.CleanupError)
+	}
+	callback := false
+	ids := map[string]string{}
+	for _, s := range result.Snapshots {
+		if s.Location.File != user || s.Location.Function == "helper" {
+			t.Fatalf("unexpected preset or unmapped stop: %+v", s.Location)
+		}
+		callback = callback || s.Location.Function == "compare"
+		for _, f := range s.Frames {
+			for _, v := range f.Variables {
+				if v.Name == "values" && f.IdentityReliable && v.IdentityReliable && len(v.Children) > 0 {
+					child := v.Children[0]
+					if child.IdentityReliable {
+						ids[child.Value] = child.ID
+					}
+				}
+			}
+		}
+	}
+	if !callback || ids["28"] == "" || ids["28"] != ids["29"] {
+		t.Fatalf("mapped callback or array identity missing: callback=%v ids=%v", callback, ids)
+	}
 }

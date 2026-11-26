@@ -1,0 +1,2944 @@
+{
+  "synthetic": true,
+  "description": "Representative selected pauses: large zero-initialized array, five input values including zeros. Adaptive display uses the union of observed changes with two cells of margin, never infers initialization or logical length.",
+  "stdin": "3 0 7 0 5\n",
+  "expected_stdout": "15\n",
+  "run": {
+    "session": {
+      "backend": "synthetic",
+      "sources": [
+        {
+          "path": "main.c",
+          "text": "#include <stdio.h>\nint main(void) {\n    int a[100010] = {0};\n    int n = 5, sum = 0;\n    for (int i = 0; i < n; ++i) {\n        scanf(\"%d\", &a[i]);\n        sum += a[i];\n    }\n    printf(\"%d\\n\", sum);\n    return 0;\n}\n"
+        }
+      ],
+      "capabilities": {
+        "globals": false,
+        "explicit_stops": false
+      }
+    },
+    "snapshots": [
+      {
+        "id": 0,
+        "location": {
+          "file": "main.c",
+          "line": 6,
+          "function": "main"
+        },
+        "frames": [
+          {
+            "id": "main-1",
+            "identity_reliable": true,
+            "location": {
+              "file": "main.c",
+              "line": 6,
+              "function": "main"
+            },
+            "variables": [
+              {
+                "id": "n",
+                "name": "n",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "5",
+                "children_complete": true
+              },
+              {
+                "id": "sum",
+                "name": "sum",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "0",
+                "children_complete": true
+              },
+              {
+                "id": "a",
+                "name": "a",
+                "type": "int[100010]",
+                "kind": "array",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "",
+                "children_complete": false,
+                "array_length": 100010,
+                "children": [
+                  {
+                    "id": "a:0",
+                    "name": "[0]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 0
+                  },
+                  {
+                    "id": "a:1",
+                    "name": "[1]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 1
+                  },
+                  {
+                    "id": "a:2",
+                    "name": "[2]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 2
+                  },
+                  {
+                    "id": "a:3",
+                    "name": "[3]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 3
+                  },
+                  {
+                    "id": "a:4",
+                    "name": "[4]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 4
+                  },
+                  {
+                    "id": "a:5",
+                    "name": "[5]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 5
+                  },
+                  {
+                    "id": "a:6",
+                    "name": "[6]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 6
+                  },
+                  {
+                    "id": "a:7",
+                    "name": "[7]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 7
+                  },
+                  {
+                    "id": "a:8",
+                    "name": "[8]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 8
+                  },
+                  {
+                    "id": "a:9",
+                    "name": "[9]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 9
+                  },
+                  {
+                    "id": "a:10",
+                    "name": "[10]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 10
+                  },
+                  {
+                    "id": "a:11",
+                    "name": "[11]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 11
+                  },
+                  {
+                    "id": "a:12",
+                    "name": "[12]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 12
+                  },
+                  {
+                    "id": "a:13",
+                    "name": "[13]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 13
+                  },
+                  {
+                    "id": "a:14",
+                    "name": "[14]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 14
+                  },
+                  {
+                    "id": "a:15",
+                    "name": "[15]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 15
+                  }
+                ]
+              },
+              {
+                "id": "i",
+                "name": "i",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "0",
+                "children_complete": true
+              }
+            ],
+            "variables_complete": true
+          }
+        ],
+        "globals_complete": true,
+        "output_offsets": {
+          "stdout_bytes": 0,
+          "stderr_bytes": 0
+        }
+      },
+      {
+        "id": 1,
+        "location": {
+          "file": "main.c",
+          "line": 7,
+          "function": "main"
+        },
+        "frames": [
+          {
+            "id": "main-1",
+            "identity_reliable": true,
+            "location": {
+              "file": "main.c",
+              "line": 7,
+              "function": "main"
+            },
+            "variables": [
+              {
+                "id": "n",
+                "name": "n",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "5",
+                "children_complete": true
+              },
+              {
+                "id": "sum",
+                "name": "sum",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "0",
+                "children_complete": true
+              },
+              {
+                "id": "a",
+                "name": "a",
+                "type": "int[100010]",
+                "kind": "array",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "",
+                "children_complete": false,
+                "array_length": 100010,
+                "children": [
+                  {
+                    "id": "a:0",
+                    "name": "[0]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "3",
+                    "children_complete": true,
+                    "index": 0
+                  },
+                  {
+                    "id": "a:1",
+                    "name": "[1]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 1
+                  },
+                  {
+                    "id": "a:2",
+                    "name": "[2]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 2
+                  },
+                  {
+                    "id": "a:3",
+                    "name": "[3]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 3
+                  },
+                  {
+                    "id": "a:4",
+                    "name": "[4]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 4
+                  },
+                  {
+                    "id": "a:5",
+                    "name": "[5]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 5
+                  },
+                  {
+                    "id": "a:6",
+                    "name": "[6]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 6
+                  },
+                  {
+                    "id": "a:7",
+                    "name": "[7]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 7
+                  },
+                  {
+                    "id": "a:8",
+                    "name": "[8]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 8
+                  },
+                  {
+                    "id": "a:9",
+                    "name": "[9]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 9
+                  },
+                  {
+                    "id": "a:10",
+                    "name": "[10]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 10
+                  },
+                  {
+                    "id": "a:11",
+                    "name": "[11]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 11
+                  },
+                  {
+                    "id": "a:12",
+                    "name": "[12]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 12
+                  },
+                  {
+                    "id": "a:13",
+                    "name": "[13]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 13
+                  },
+                  {
+                    "id": "a:14",
+                    "name": "[14]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 14
+                  },
+                  {
+                    "id": "a:15",
+                    "name": "[15]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 15
+                  }
+                ]
+              },
+              {
+                "id": "i",
+                "name": "i",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "0",
+                "children_complete": true
+              }
+            ],
+            "variables_complete": true
+          }
+        ],
+        "globals_complete": true,
+        "output_offsets": {
+          "stdout_bytes": 0,
+          "stderr_bytes": 0
+        }
+      },
+      {
+        "id": 2,
+        "location": {
+          "file": "main.c",
+          "line": 6,
+          "function": "main"
+        },
+        "frames": [
+          {
+            "id": "main-1",
+            "identity_reliable": true,
+            "location": {
+              "file": "main.c",
+              "line": 6,
+              "function": "main"
+            },
+            "variables": [
+              {
+                "id": "n",
+                "name": "n",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "5",
+                "children_complete": true
+              },
+              {
+                "id": "sum",
+                "name": "sum",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "3",
+                "children_complete": true
+              },
+              {
+                "id": "a",
+                "name": "a",
+                "type": "int[100010]",
+                "kind": "array",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "",
+                "children_complete": false,
+                "array_length": 100010,
+                "children": [
+                  {
+                    "id": "a:0",
+                    "name": "[0]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "3",
+                    "children_complete": true,
+                    "index": 0
+                  },
+                  {
+                    "id": "a:1",
+                    "name": "[1]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 1
+                  },
+                  {
+                    "id": "a:2",
+                    "name": "[2]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 2
+                  },
+                  {
+                    "id": "a:3",
+                    "name": "[3]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 3
+                  },
+                  {
+                    "id": "a:4",
+                    "name": "[4]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 4
+                  },
+                  {
+                    "id": "a:5",
+                    "name": "[5]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 5
+                  },
+                  {
+                    "id": "a:6",
+                    "name": "[6]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 6
+                  },
+                  {
+                    "id": "a:7",
+                    "name": "[7]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 7
+                  },
+                  {
+                    "id": "a:8",
+                    "name": "[8]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 8
+                  },
+                  {
+                    "id": "a:9",
+                    "name": "[9]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 9
+                  },
+                  {
+                    "id": "a:10",
+                    "name": "[10]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 10
+                  },
+                  {
+                    "id": "a:11",
+                    "name": "[11]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 11
+                  },
+                  {
+                    "id": "a:12",
+                    "name": "[12]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 12
+                  },
+                  {
+                    "id": "a:13",
+                    "name": "[13]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 13
+                  },
+                  {
+                    "id": "a:14",
+                    "name": "[14]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 14
+                  },
+                  {
+                    "id": "a:15",
+                    "name": "[15]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 15
+                  }
+                ]
+              },
+              {
+                "id": "i",
+                "name": "i",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "1",
+                "children_complete": true
+              }
+            ],
+            "variables_complete": true
+          }
+        ],
+        "globals_complete": true,
+        "output_offsets": {
+          "stdout_bytes": 0,
+          "stderr_bytes": 0
+        }
+      },
+      {
+        "id": 3,
+        "location": {
+          "file": "main.c",
+          "line": 7,
+          "function": "main"
+        },
+        "frames": [
+          {
+            "id": "main-1",
+            "identity_reliable": true,
+            "location": {
+              "file": "main.c",
+              "line": 7,
+              "function": "main"
+            },
+            "variables": [
+              {
+                "id": "n",
+                "name": "n",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "5",
+                "children_complete": true
+              },
+              {
+                "id": "sum",
+                "name": "sum",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "3",
+                "children_complete": true
+              },
+              {
+                "id": "a",
+                "name": "a",
+                "type": "int[100010]",
+                "kind": "array",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "",
+                "children_complete": false,
+                "array_length": 100010,
+                "children": [
+                  {
+                    "id": "a:0",
+                    "name": "[0]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "3",
+                    "children_complete": true,
+                    "index": 0
+                  },
+                  {
+                    "id": "a:1",
+                    "name": "[1]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 1
+                  },
+                  {
+                    "id": "a:2",
+                    "name": "[2]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 2
+                  },
+                  {
+                    "id": "a:3",
+                    "name": "[3]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 3
+                  },
+                  {
+                    "id": "a:4",
+                    "name": "[4]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 4
+                  },
+                  {
+                    "id": "a:5",
+                    "name": "[5]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 5
+                  },
+                  {
+                    "id": "a:6",
+                    "name": "[6]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 6
+                  },
+                  {
+                    "id": "a:7",
+                    "name": "[7]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 7
+                  },
+                  {
+                    "id": "a:8",
+                    "name": "[8]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 8
+                  },
+                  {
+                    "id": "a:9",
+                    "name": "[9]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 9
+                  },
+                  {
+                    "id": "a:10",
+                    "name": "[10]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 10
+                  },
+                  {
+                    "id": "a:11",
+                    "name": "[11]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 11
+                  },
+                  {
+                    "id": "a:12",
+                    "name": "[12]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 12
+                  },
+                  {
+                    "id": "a:13",
+                    "name": "[13]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 13
+                  },
+                  {
+                    "id": "a:14",
+                    "name": "[14]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 14
+                  },
+                  {
+                    "id": "a:15",
+                    "name": "[15]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 15
+                  }
+                ]
+              },
+              {
+                "id": "i",
+                "name": "i",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "1",
+                "children_complete": true
+              }
+            ],
+            "variables_complete": true
+          }
+        ],
+        "globals_complete": true,
+        "output_offsets": {
+          "stdout_bytes": 0,
+          "stderr_bytes": 0
+        }
+      },
+      {
+        "id": 4,
+        "location": {
+          "file": "main.c",
+          "line": 6,
+          "function": "main"
+        },
+        "frames": [
+          {
+            "id": "main-1",
+            "identity_reliable": true,
+            "location": {
+              "file": "main.c",
+              "line": 6,
+              "function": "main"
+            },
+            "variables": [
+              {
+                "id": "n",
+                "name": "n",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "5",
+                "children_complete": true
+              },
+              {
+                "id": "sum",
+                "name": "sum",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "3",
+                "children_complete": true
+              },
+              {
+                "id": "a",
+                "name": "a",
+                "type": "int[100010]",
+                "kind": "array",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "",
+                "children_complete": false,
+                "array_length": 100010,
+                "children": [
+                  {
+                    "id": "a:0",
+                    "name": "[0]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "3",
+                    "children_complete": true,
+                    "index": 0
+                  },
+                  {
+                    "id": "a:1",
+                    "name": "[1]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 1
+                  },
+                  {
+                    "id": "a:2",
+                    "name": "[2]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 2
+                  },
+                  {
+                    "id": "a:3",
+                    "name": "[3]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 3
+                  },
+                  {
+                    "id": "a:4",
+                    "name": "[4]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 4
+                  },
+                  {
+                    "id": "a:5",
+                    "name": "[5]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 5
+                  },
+                  {
+                    "id": "a:6",
+                    "name": "[6]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 6
+                  },
+                  {
+                    "id": "a:7",
+                    "name": "[7]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 7
+                  },
+                  {
+                    "id": "a:8",
+                    "name": "[8]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 8
+                  },
+                  {
+                    "id": "a:9",
+                    "name": "[9]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 9
+                  },
+                  {
+                    "id": "a:10",
+                    "name": "[10]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 10
+                  },
+                  {
+                    "id": "a:11",
+                    "name": "[11]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 11
+                  },
+                  {
+                    "id": "a:12",
+                    "name": "[12]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 12
+                  },
+                  {
+                    "id": "a:13",
+                    "name": "[13]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 13
+                  },
+                  {
+                    "id": "a:14",
+                    "name": "[14]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 14
+                  },
+                  {
+                    "id": "a:15",
+                    "name": "[15]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 15
+                  }
+                ]
+              },
+              {
+                "id": "i",
+                "name": "i",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "2",
+                "children_complete": true
+              }
+            ],
+            "variables_complete": true
+          }
+        ],
+        "globals_complete": true,
+        "output_offsets": {
+          "stdout_bytes": 0,
+          "stderr_bytes": 0
+        }
+      },
+      {
+        "id": 5,
+        "location": {
+          "file": "main.c",
+          "line": 7,
+          "function": "main"
+        },
+        "frames": [
+          {
+            "id": "main-1",
+            "identity_reliable": true,
+            "location": {
+              "file": "main.c",
+              "line": 7,
+              "function": "main"
+            },
+            "variables": [
+              {
+                "id": "n",
+                "name": "n",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "5",
+                "children_complete": true
+              },
+              {
+                "id": "sum",
+                "name": "sum",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "3",
+                "children_complete": true
+              },
+              {
+                "id": "a",
+                "name": "a",
+                "type": "int[100010]",
+                "kind": "array",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "",
+                "children_complete": false,
+                "array_length": 100010,
+                "children": [
+                  {
+                    "id": "a:0",
+                    "name": "[0]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "3",
+                    "children_complete": true,
+                    "index": 0
+                  },
+                  {
+                    "id": "a:1",
+                    "name": "[1]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 1
+                  },
+                  {
+                    "id": "a:2",
+                    "name": "[2]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "7",
+                    "children_complete": true,
+                    "index": 2
+                  },
+                  {
+                    "id": "a:3",
+                    "name": "[3]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 3
+                  },
+                  {
+                    "id": "a:4",
+                    "name": "[4]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 4
+                  },
+                  {
+                    "id": "a:5",
+                    "name": "[5]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 5
+                  },
+                  {
+                    "id": "a:6",
+                    "name": "[6]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 6
+                  },
+                  {
+                    "id": "a:7",
+                    "name": "[7]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 7
+                  },
+                  {
+                    "id": "a:8",
+                    "name": "[8]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 8
+                  },
+                  {
+                    "id": "a:9",
+                    "name": "[9]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 9
+                  },
+                  {
+                    "id": "a:10",
+                    "name": "[10]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 10
+                  },
+                  {
+                    "id": "a:11",
+                    "name": "[11]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 11
+                  },
+                  {
+                    "id": "a:12",
+                    "name": "[12]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 12
+                  },
+                  {
+                    "id": "a:13",
+                    "name": "[13]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 13
+                  },
+                  {
+                    "id": "a:14",
+                    "name": "[14]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 14
+                  },
+                  {
+                    "id": "a:15",
+                    "name": "[15]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 15
+                  }
+                ]
+              },
+              {
+                "id": "i",
+                "name": "i",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "2",
+                "children_complete": true
+              }
+            ],
+            "variables_complete": true
+          }
+        ],
+        "globals_complete": true,
+        "output_offsets": {
+          "stdout_bytes": 0,
+          "stderr_bytes": 0
+        }
+      },
+      {
+        "id": 6,
+        "location": {
+          "file": "main.c",
+          "line": 6,
+          "function": "main"
+        },
+        "frames": [
+          {
+            "id": "main-1",
+            "identity_reliable": true,
+            "location": {
+              "file": "main.c",
+              "line": 6,
+              "function": "main"
+            },
+            "variables": [
+              {
+                "id": "n",
+                "name": "n",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "5",
+                "children_complete": true
+              },
+              {
+                "id": "sum",
+                "name": "sum",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "10",
+                "children_complete": true
+              },
+              {
+                "id": "a",
+                "name": "a",
+                "type": "int[100010]",
+                "kind": "array",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "",
+                "children_complete": false,
+                "array_length": 100010,
+                "children": [
+                  {
+                    "id": "a:0",
+                    "name": "[0]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "3",
+                    "children_complete": true,
+                    "index": 0
+                  },
+                  {
+                    "id": "a:1",
+                    "name": "[1]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 1
+                  },
+                  {
+                    "id": "a:2",
+                    "name": "[2]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "7",
+                    "children_complete": true,
+                    "index": 2
+                  },
+                  {
+                    "id": "a:3",
+                    "name": "[3]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 3
+                  },
+                  {
+                    "id": "a:4",
+                    "name": "[4]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 4
+                  },
+                  {
+                    "id": "a:5",
+                    "name": "[5]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 5
+                  },
+                  {
+                    "id": "a:6",
+                    "name": "[6]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 6
+                  },
+                  {
+                    "id": "a:7",
+                    "name": "[7]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 7
+                  },
+                  {
+                    "id": "a:8",
+                    "name": "[8]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 8
+                  },
+                  {
+                    "id": "a:9",
+                    "name": "[9]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 9
+                  },
+                  {
+                    "id": "a:10",
+                    "name": "[10]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 10
+                  },
+                  {
+                    "id": "a:11",
+                    "name": "[11]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 11
+                  },
+                  {
+                    "id": "a:12",
+                    "name": "[12]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 12
+                  },
+                  {
+                    "id": "a:13",
+                    "name": "[13]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 13
+                  },
+                  {
+                    "id": "a:14",
+                    "name": "[14]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 14
+                  },
+                  {
+                    "id": "a:15",
+                    "name": "[15]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 15
+                  }
+                ]
+              },
+              {
+                "id": "i",
+                "name": "i",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "3",
+                "children_complete": true
+              }
+            ],
+            "variables_complete": true
+          }
+        ],
+        "globals_complete": true,
+        "output_offsets": {
+          "stdout_bytes": 0,
+          "stderr_bytes": 0
+        }
+      },
+      {
+        "id": 7,
+        "location": {
+          "file": "main.c",
+          "line": 7,
+          "function": "main"
+        },
+        "frames": [
+          {
+            "id": "main-1",
+            "identity_reliable": true,
+            "location": {
+              "file": "main.c",
+              "line": 7,
+              "function": "main"
+            },
+            "variables": [
+              {
+                "id": "n",
+                "name": "n",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "5",
+                "children_complete": true
+              },
+              {
+                "id": "sum",
+                "name": "sum",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "10",
+                "children_complete": true
+              },
+              {
+                "id": "a",
+                "name": "a",
+                "type": "int[100010]",
+                "kind": "array",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "",
+                "children_complete": false,
+                "array_length": 100010,
+                "children": [
+                  {
+                    "id": "a:0",
+                    "name": "[0]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "3",
+                    "children_complete": true,
+                    "index": 0
+                  },
+                  {
+                    "id": "a:1",
+                    "name": "[1]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 1
+                  },
+                  {
+                    "id": "a:2",
+                    "name": "[2]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "7",
+                    "children_complete": true,
+                    "index": 2
+                  },
+                  {
+                    "id": "a:3",
+                    "name": "[3]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 3
+                  },
+                  {
+                    "id": "a:4",
+                    "name": "[4]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 4
+                  },
+                  {
+                    "id": "a:5",
+                    "name": "[5]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 5
+                  },
+                  {
+                    "id": "a:6",
+                    "name": "[6]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 6
+                  },
+                  {
+                    "id": "a:7",
+                    "name": "[7]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 7
+                  },
+                  {
+                    "id": "a:8",
+                    "name": "[8]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 8
+                  },
+                  {
+                    "id": "a:9",
+                    "name": "[9]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 9
+                  },
+                  {
+                    "id": "a:10",
+                    "name": "[10]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 10
+                  },
+                  {
+                    "id": "a:11",
+                    "name": "[11]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 11
+                  },
+                  {
+                    "id": "a:12",
+                    "name": "[12]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 12
+                  },
+                  {
+                    "id": "a:13",
+                    "name": "[13]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 13
+                  },
+                  {
+                    "id": "a:14",
+                    "name": "[14]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 14
+                  },
+                  {
+                    "id": "a:15",
+                    "name": "[15]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 15
+                  }
+                ]
+              },
+              {
+                "id": "i",
+                "name": "i",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "3",
+                "children_complete": true
+              }
+            ],
+            "variables_complete": true
+          }
+        ],
+        "globals_complete": true,
+        "output_offsets": {
+          "stdout_bytes": 0,
+          "stderr_bytes": 0
+        }
+      },
+      {
+        "id": 8,
+        "location": {
+          "file": "main.c",
+          "line": 6,
+          "function": "main"
+        },
+        "frames": [
+          {
+            "id": "main-1",
+            "identity_reliable": true,
+            "location": {
+              "file": "main.c",
+              "line": 6,
+              "function": "main"
+            },
+            "variables": [
+              {
+                "id": "n",
+                "name": "n",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "5",
+                "children_complete": true
+              },
+              {
+                "id": "sum",
+                "name": "sum",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "10",
+                "children_complete": true
+              },
+              {
+                "id": "a",
+                "name": "a",
+                "type": "int[100010]",
+                "kind": "array",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "",
+                "children_complete": false,
+                "array_length": 100010,
+                "children": [
+                  {
+                    "id": "a:0",
+                    "name": "[0]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "3",
+                    "children_complete": true,
+                    "index": 0
+                  },
+                  {
+                    "id": "a:1",
+                    "name": "[1]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 1
+                  },
+                  {
+                    "id": "a:2",
+                    "name": "[2]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "7",
+                    "children_complete": true,
+                    "index": 2
+                  },
+                  {
+                    "id": "a:3",
+                    "name": "[3]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 3
+                  },
+                  {
+                    "id": "a:4",
+                    "name": "[4]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 4
+                  },
+                  {
+                    "id": "a:5",
+                    "name": "[5]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 5
+                  },
+                  {
+                    "id": "a:6",
+                    "name": "[6]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 6
+                  },
+                  {
+                    "id": "a:7",
+                    "name": "[7]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 7
+                  },
+                  {
+                    "id": "a:8",
+                    "name": "[8]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 8
+                  },
+                  {
+                    "id": "a:9",
+                    "name": "[9]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 9
+                  },
+                  {
+                    "id": "a:10",
+                    "name": "[10]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 10
+                  },
+                  {
+                    "id": "a:11",
+                    "name": "[11]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 11
+                  },
+                  {
+                    "id": "a:12",
+                    "name": "[12]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 12
+                  },
+                  {
+                    "id": "a:13",
+                    "name": "[13]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 13
+                  },
+                  {
+                    "id": "a:14",
+                    "name": "[14]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 14
+                  },
+                  {
+                    "id": "a:15",
+                    "name": "[15]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 15
+                  }
+                ]
+              },
+              {
+                "id": "i",
+                "name": "i",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "4",
+                "children_complete": true
+              }
+            ],
+            "variables_complete": true
+          }
+        ],
+        "globals_complete": true,
+        "output_offsets": {
+          "stdout_bytes": 0,
+          "stderr_bytes": 0
+        }
+      },
+      {
+        "id": 9,
+        "location": {
+          "file": "main.c",
+          "line": 7,
+          "function": "main"
+        },
+        "frames": [
+          {
+            "id": "main-1",
+            "identity_reliable": true,
+            "location": {
+              "file": "main.c",
+              "line": 7,
+              "function": "main"
+            },
+            "variables": [
+              {
+                "id": "n",
+                "name": "n",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "5",
+                "children_complete": true
+              },
+              {
+                "id": "sum",
+                "name": "sum",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "10",
+                "children_complete": true
+              },
+              {
+                "id": "a",
+                "name": "a",
+                "type": "int[100010]",
+                "kind": "array",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "",
+                "children_complete": false,
+                "array_length": 100010,
+                "children": [
+                  {
+                    "id": "a:0",
+                    "name": "[0]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "3",
+                    "children_complete": true,
+                    "index": 0
+                  },
+                  {
+                    "id": "a:1",
+                    "name": "[1]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 1
+                  },
+                  {
+                    "id": "a:2",
+                    "name": "[2]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "7",
+                    "children_complete": true,
+                    "index": 2
+                  },
+                  {
+                    "id": "a:3",
+                    "name": "[3]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 3
+                  },
+                  {
+                    "id": "a:4",
+                    "name": "[4]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "5",
+                    "children_complete": true,
+                    "index": 4
+                  },
+                  {
+                    "id": "a:5",
+                    "name": "[5]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 5
+                  },
+                  {
+                    "id": "a:6",
+                    "name": "[6]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 6
+                  },
+                  {
+                    "id": "a:7",
+                    "name": "[7]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 7
+                  },
+                  {
+                    "id": "a:8",
+                    "name": "[8]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 8
+                  },
+                  {
+                    "id": "a:9",
+                    "name": "[9]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 9
+                  },
+                  {
+                    "id": "a:10",
+                    "name": "[10]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 10
+                  },
+                  {
+                    "id": "a:11",
+                    "name": "[11]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 11
+                  },
+                  {
+                    "id": "a:12",
+                    "name": "[12]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 12
+                  },
+                  {
+                    "id": "a:13",
+                    "name": "[13]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 13
+                  },
+                  {
+                    "id": "a:14",
+                    "name": "[14]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 14
+                  },
+                  {
+                    "id": "a:15",
+                    "name": "[15]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 15
+                  }
+                ]
+              },
+              {
+                "id": "i",
+                "name": "i",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "4",
+                "children_complete": true
+              }
+            ],
+            "variables_complete": true
+          }
+        ],
+        "globals_complete": true,
+        "output_offsets": {
+          "stdout_bytes": 0,
+          "stderr_bytes": 0
+        }
+      },
+      {
+        "id": 10,
+        "location": {
+          "file": "main.c",
+          "line": 9,
+          "function": "main"
+        },
+        "frames": [
+          {
+            "id": "main-1",
+            "identity_reliable": true,
+            "location": {
+              "file": "main.c",
+              "line": 9,
+              "function": "main"
+            },
+            "variables": [
+              {
+                "id": "n",
+                "name": "n",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "5",
+                "children_complete": true
+              },
+              {
+                "id": "sum",
+                "name": "sum",
+                "type": "int",
+                "kind": "scalar",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "15",
+                "children_complete": true
+              },
+              {
+                "id": "a",
+                "name": "a",
+                "type": "int[100010]",
+                "kind": "array",
+                "status": "observed",
+                "identity_reliable": true,
+                "scope": "local",
+                "value": "",
+                "children_complete": false,
+                "array_length": 100010,
+                "children": [
+                  {
+                    "id": "a:0",
+                    "name": "[0]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "3",
+                    "children_complete": true,
+                    "index": 0
+                  },
+                  {
+                    "id": "a:1",
+                    "name": "[1]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 1
+                  },
+                  {
+                    "id": "a:2",
+                    "name": "[2]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "7",
+                    "children_complete": true,
+                    "index": 2
+                  },
+                  {
+                    "id": "a:3",
+                    "name": "[3]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 3
+                  },
+                  {
+                    "id": "a:4",
+                    "name": "[4]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "5",
+                    "children_complete": true,
+                    "index": 4
+                  },
+                  {
+                    "id": "a:5",
+                    "name": "[5]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 5
+                  },
+                  {
+                    "id": "a:6",
+                    "name": "[6]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 6
+                  },
+                  {
+                    "id": "a:7",
+                    "name": "[7]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 7
+                  },
+                  {
+                    "id": "a:8",
+                    "name": "[8]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 8
+                  },
+                  {
+                    "id": "a:9",
+                    "name": "[9]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 9
+                  },
+                  {
+                    "id": "a:10",
+                    "name": "[10]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 10
+                  },
+                  {
+                    "id": "a:11",
+                    "name": "[11]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 11
+                  },
+                  {
+                    "id": "a:12",
+                    "name": "[12]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 12
+                  },
+                  {
+                    "id": "a:13",
+                    "name": "[13]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 13
+                  },
+                  {
+                    "id": "a:14",
+                    "name": "[14]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 14
+                  },
+                  {
+                    "id": "a:15",
+                    "name": "[15]",
+                    "type": "int",
+                    "kind": "scalar",
+                    "status": "observed",
+                    "identity_reliable": true,
+                    "scope": "local",
+                    "value": "0",
+                    "children_complete": true,
+                    "index": 15
+                  }
+                ]
+              }
+            ],
+            "variables_complete": true
+          }
+        ],
+        "globals_complete": true,
+        "output_offsets": {
+          "stdout_bytes": 0,
+          "stderr_bytes": 0
+        }
+      }
+    ],
+    "reason": "exited",
+    "exit_code": 0,
+    "output": {
+      "stdout": "MTUK",
+      "stderr": ""
+    }
+  }
+}
