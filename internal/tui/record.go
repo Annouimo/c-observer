@@ -143,7 +143,7 @@ func NewRecorded(record ObservationRecord) (Model, error) {
 	return Model{
 		replay: NewReplay(record.Run), offline: true, record: &record,
 		config: observer.LaunchConfig{Stdin: record.Stdin, ExpectedStdout: record.ExpectedStdout, Comparison: record.Comparison},
-		width: 100, height: 30, focus: 1, consoleTab: 1,
+		width:  100, height: 30, focus: 1, consoleTab: 1,
 	}, nil
 }
 
