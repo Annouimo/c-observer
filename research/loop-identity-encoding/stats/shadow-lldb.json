@@ -1,0 +1,23 @@
+{
+  "avg_id_len": 18.92,
+  "dictionary_bytes": 537,
+  "hash_bytes": 39977,
+  "hash_gzip_bytes": 2085,
+  "id_key_bytes": 385,
+  "id_occurrences": 77,
+  "id_value_bytes": 1611,
+  "int_bytes": 38220,
+  "int_gzip_bytes": 1705,
+  "json_compact_bytes": 39164,
+  "json_gzip_bytes": 1370,
+  "label": "shadow-lldb",
+  "max_id_len": 19,
+  "none_bytes": 35825,
+  "none_gzip_bytes": 1155,
+  "reason": "exited",
+  "snapshots": 24,
+  "strint_bytes": 37546,
+  "strint_gzip_bytes": 1348,
+  "unique_all_ids": 79,
+  "unique_variable_ids": 6
+}

@@ -1,0 +1,23 @@
+{
+  "avg_id_len": 35.57,
+  "dictionary_bytes": 3540,
+  "hash_bytes": 307626,
+  "hash_gzip_bytes": 5828,
+  "id_key_bytes": 8400,
+  "id_occurrences": 1680,
+  "id_value_bytes": 63120,
+  "int_bytes": 284856,
+  "int_gzip_bytes": 4979,
+  "json_compact_bytes": 339636,
+  "json_gzip_bytes": 4723,
+  "label": "birthday-native",
+  "max_id_len": 38,
+  "none_bytes": 265386,
+  "none_gzip_bytes": 3551,
+  "reason": "exited",
+  "snapshots": 20,
+  "strint_bytes": 283897,
+  "strint_gzip_bytes": 4181,
+  "unique_all_ids": 147,
+  "unique_variable_ids": 86
+}

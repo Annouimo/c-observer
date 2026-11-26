@@ -1,0 +1,11 @@
+corpus=research/loop-identity-encoding/corpus/loop-lldb.ids.txt.gz occurrences=565 unique=31 avg_len=18.0
+heap strings=21.1 KiB uint32=4.1 KiB hash64=4.8 KiB
+match/string-map       median    10097.0 ns/op (min 9744.0 max 10138.0)        0 B/op      0 allocs/op
+match/uint32-map       median    16349.0 ns/op (min 16292.0 max 16357.0)        0 B/op      0 allocs/op
+match/hash64-map       median    17613.0 ns/op (min 17575.0 max 19383.0)        0 B/op      0 allocs/op
+match/struct-key-map   median    48224.0 ns/op (min 48113.0 max 50284.0)        0 B/op      0 allocs/op
+build/fmt-sprintf      median   157295.0 ns/op (min 156400.0 max 160424.0)    39230 B/op   2260 allocs/op
+build/string-concat    median    37151.0 ns/op (min 37066.0 max 37470.0)    12104 B/op    565 allocs/op
+build/intern           median    53580.0 ns/op (min 53107.0 max 54302.0)    13936 B/op    568 allocs/op
+alloc/string-copy      median    15739.0 ns/op (min 15586.0 max 15740.0)    12104 B/op    565 allocs/op
+lookup/uint32+reverse  median    10172.0 ns/op (min 10134.0 max 10233.0)        0 B/op      0 allocs/op

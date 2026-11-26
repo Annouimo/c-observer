@@ -1,0 +1,11 @@
+corpus=research/loop-identity-encoding/corpus/stress-gdb.ids.txt.gz occurrences=45708 unique=46 avg_len=20.8
+heap strings=1762.3 KiB uint32=185.9 KiB hash64=360.0 KiB
+match/string-map         826534.0 ns/op        0 B/op      0 allocs/op
+match/uint32-map        1373242.0 ns/op        0 B/op      0 allocs/op
+match/hash64-map        1599994.0 ns/op        0 B/op      0 allocs/op
+match/struct-key-map    4016864.0 ns/op        0 B/op      0 allocs/op
+build/fmt-sprintf      12855691.0 ns/op  3261739 B/op 182834 allocs/op
+build/string-concat     3341849.0 ns/op  1067328 B/op  45708 allocs/op
+build/intern            4252598.0 ns/op  1069160 B/op  45711 allocs/op
+alloc/string-copy       1467432.0 ns/op  1067328 B/op  45708 allocs/op
+lookup/uint32+reverse    876799.0 ns/op        0 B/op      0 allocs/op

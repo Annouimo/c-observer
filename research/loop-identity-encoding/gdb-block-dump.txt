@@ -1,0 +1,19 @@
+GDB 17.1 block chain evidence (fixture loop_identity.c)
+Source paths and machine addresses omitted; the same output is reproducible with
+research/loop-identity-encoding/gdb-blockdump.py.
+
+break line 16 (body local x)
+  block[0] x           -> block[1] i (for) -> block[2] main
+break line 48 (while body local y)
+  block[0] y           -> block[1] main
+break line 54 (for q inside if)
+  block[0] q (for)     -> block[1] main
+break line 61 (for z inside while)
+  block[0] z (for)     -> block[1] main
+break line 68 (for c, continue)
+  block[0] c (for)     -> block[1] main
+
+The enclosing while block is absent from z's chain, and y's while-body block is
+indistinguishable from a top-level for block by block.function / start / end.
+A block-depth heuristic would therefore mark z and y as reliable and merge
+different dynamic instances. This is why the GDB loop rule is not implemented.

@@ -1,0 +1,11 @@
+corpus=research/loop-identity-encoding/corpus/stress-lldb.ids.txt.gz occurrences=45711 unique=90 avg_len=22.3
+heap strings=1901.8 KiB uint32=187.5 KiB hash64=360.0 KiB
+match/string-map       median   818042.0 ns/op (min 787639.0 max 894360.0)        0 B/op      0 allocs/op
+match/uint32-map       median  1442335.0 ns/op (min 1416164.0 max 1507989.0)        0 B/op      0 allocs/op
+match/hash64-map       median  1681122.0 ns/op (min 1661268.0 max 1717255.0)        0 B/op      0 allocs/op
+match/struct-key-map   median  3886461.0 ns/op (min 3846469.0 max 3911952.0)        0 B/op      0 allocs/op
+build/fmt-sprintf      median 13233518.0 ns/op (min 13047158.0 max 13482004.0)  3404695 B/op 182846 allocs/op
+build/string-concat    median  3135180.0 ns/op (min 3121619.0 max 3167795.0)  1210096 B/op  45711 allocs/op
+build/intern           median  4309343.0 ns/op (min 4272448.0 max 4330670.0)  1213592 B/op  45714 allocs/op
+alloc/string-copy      median  1514345.0 ns/op (min 1493567.0 max 1517250.0)  1210096 B/op  45711 allocs/op
+lookup/uint32+reverse  median   863084.0 ns/op (min 861123.0 max 864455.0)        0 B/op      0 allocs/op

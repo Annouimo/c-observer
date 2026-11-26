@@ -1,0 +1,11 @@
+corpus=research/loop-identity-encoding/corpus/loop-gdb.ids.txt.gz occurrences=546 unique=9 avg_len=15.7
+heap strings=23.9 KiB uint32=2.8 KiB hash64=4.8 KiB
+match/string-map           9559.0 ns/op        0 B/op      0 allocs/op
+match/uint32-map          16684.0 ns/op        0 B/op      0 allocs/op
+match/hash64-map          15226.0 ns/op        0 B/op      0 allocs/op
+match/struct-key-map      44748.0 ns/op        0 B/op      0 allocs/op
+build/fmt-sprintf        141557.0 ns/op    35806 B/op   2184 allocs/op
+build/string-concat       43217.0 ns/op     9592 B/op    546 allocs/op
+build/intern              49828.0 ns/op    10048 B/op    549 allocs/op
+alloc/string-copy         15131.0 ns/op     9592 B/op    546 allocs/op
+lookup/uint32+reverse     10318.0 ns/op        0 B/op      0 allocs/op

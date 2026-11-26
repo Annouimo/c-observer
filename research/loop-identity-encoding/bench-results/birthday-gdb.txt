@@ -1,0 +1,11 @@
+corpus=research/loop-identity-encoding/corpus/birthday-gdb.ids.txt.gz occurrences=1763 unique=86 avg_len=32.9
+heap strings=104.3 KiB uint32=11.5 KiB hash64=14.0 KiB
+match/string-map          33609.0 ns/op        0 B/op      0 allocs/op
+match/uint32-map          56319.0 ns/op        0 B/op      0 allocs/op
+match/hash64-map          83510.0 ns/op        0 B/op      0 allocs/op
+match/struct-key-map     159183.0 ns/op        0 B/op      0 allocs/op
+build/fmt-sprintf        474873.0 ns/op   162758 B/op   7052 allocs/op
+build/string-concat      118067.0 ns/op    78104 B/op   1763 allocs/op
+build/intern             164826.0 ns/op    81600 B/op   1766 allocs/op
+alloc/string-copy         53985.0 ns/op    78104 B/op   1763 allocs/op
+lookup/uint32+reverse     38477.0 ns/op        0 B/op      0 allocs/op
