@@ -177,6 +177,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.jumpInput = ""
 		case "?":
 			m.mode = "help"
+			m.menuCursor = 0
 		case "w":
 			if m.record != nil && !m.offline && !m.demo {
 				m.exportPath = ""
