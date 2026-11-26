@@ -24,6 +24,8 @@ type astNode struct {
 	Loc                      struct {
 		Offset       *int
 		File         string
+		PresumedFile string
+		PresumedLine int
 		ExpansionLoc *struct{}
 		SpellingLoc  *struct{}
 		IncludedFrom *struct{}
@@ -34,16 +36,18 @@ type astNode struct {
 
 type declarationKey struct {
 	name string
+	file string
 	line int
 }
 
 type sourceIndex struct {
-	functions []string
-	mainLines map[string]int
-	globals   map[declarationKey]observer.VariableScope
+	functions  []declarationKey
+	mainLines  map[string]int
+	mainSource string
+	globals    map[declarationKey]observer.VariableScope
 }
 
-func inspectSource(ctx context.Context, compiler, dir, source, text string, args []string) sourceIndex {
+func inspectSource(ctx context.Context, compiler, dir, source, text string, args []string, origins sourceOrigins) sourceIndex {
 	cmd := exec.CommandContext(ctx, compiler, append(append([]string(nil), args...),
 		"-fsyntax-only", "-Xclang", "-ast-dump=json", source)...)
 	cmd.Dir = dir
@@ -61,16 +65,16 @@ func inspectSource(ctx context.Context, compiler, dir, source, text string, args
 	}
 	index := sourceIndex{globals: make(map[declarationKey]observer.VariableScope)}
 	for _, root := range unit.Inner {
-		line := root.sourceLine(source, text)
+		file, line := root.sourceLine(source, text, origins)
 		if line == 0 {
 			continue
 		}
 		if root.Kind == "VarDecl" {
 			switch root.StorageClass {
 			case "static":
-				index.addGlobal(declarationKey{root.Name, line}, observer.FileStaticScope)
+				index.addGlobal(declarationKey{root.Name, file, line}, observer.FileStaticScope)
 			case "":
-				index.addGlobal(declarationKey{root.Name, line}, observer.GlobalScope)
+				index.addGlobal(declarationKey{root.Name, file, line}, observer.GlobalScope)
 			}
 			continue
 		}
@@ -79,8 +83,8 @@ func inspectSource(ctx context.Context, compiler, dir, source, text string, args
 		}
 		for _, body := range root.Inner {
 			if body.Kind == "CompoundStmt" {
-				index.functions = append(index.functions, root.Name)
-				index.findFunctionStatics(body, source, text)
+				index.functions = append(index.functions, declarationKey{root.Name, file, line})
+				index.findFunctionStatics(body, source, text, origins)
 				break
 			}
 		}
@@ -97,10 +101,8 @@ func inspectSource(ctx context.Context, compiler, dir, source, text string, args
 					continue
 				}
 				for _, decl := range statement.Inner {
-					loc := decl.Loc
-					if decl.Kind != "VarDecl" || decl.StorageClass != "" || loc.Offset == nil ||
-						loc.ExpansionLoc != nil || loc.SpellingLoc != nil || loc.IncludedFrom != nil ||
-						(loc.File != "" && loc.File != source) || *loc.Offset < 0 || *loc.Offset >= len(text) {
+					declFile, declLine := decl.sourceLine(source, text, origins)
+					if decl.Kind != "VarDecl" || decl.StorageClass != "" || declFile != file || declLine == 0 {
 						continue
 					}
 					typeName := decl.Type.DesugaredQualType
@@ -110,7 +112,7 @@ func inspectSource(ctx context.Context, compiler, dir, source, text string, args
 					if strings.Contains(typeName, "[") && !arrayType.MatchString(typeName) {
 						continue // Variable-length or otherwise ambiguous array type.
 					}
-					lines[decl.Name] = 1 + strings.Count(text[:*loc.Offset], "\n")
+					lines[decl.Name] = declLine
 				}
 			}
 			counts := map[string]int{}
@@ -120,20 +122,23 @@ func inspectSource(ctx context.Context, compiler, dir, source, text string, args
 					delete(lines, name) // DAP may report only a line, with no column.
 				}
 			}
-			index.mainLines = lines
+			index.mainLines, index.mainSource = lines, file
 		}
 	}
 	return index
 }
 
-func (node astNode) sourceLine(source, text string) int {
+func (node astNode) sourceLine(source, text string, origins sourceOrigins) (string, int) {
 	loc := node.Loc
 	if node.Name == "" || loc.IncludedFrom != nil || loc.ExpansionLoc != nil ||
 		loc.SpellingLoc != nil || (loc.File != "" && loc.File != source) || loc.Offset == nil ||
 		*loc.Offset < 0 || *loc.Offset >= len(text) || !strings.HasPrefix(text[*loc.Offset:], node.Name) {
-		return 0
+		return "", 0
 	}
-	return 1 + strings.Count(text[:*loc.Offset], "\n")
+	if origins == nil {
+		return source, 1 + strings.Count(text[:*loc.Offset], "\n")
+	}
+	return origins.resolve(*loc.Offset, loc.PresumedFile, loc.PresumedLine)
 }
 
 func (i sourceIndex) addGlobal(key declarationKey, scope observer.VariableScope) {
@@ -144,14 +149,14 @@ func (i sourceIndex) addGlobal(key declarationKey, scope observer.VariableScope)
 	i.globals[key] = scope
 }
 
-func (i sourceIndex) findFunctionStatics(node astNode, source, text string) {
+func (i sourceIndex) findFunctionStatics(node astNode, source, text string, origins sourceOrigins) {
 	if node.Kind == "VarDecl" && node.StorageClass == "static" {
-		if line := node.sourceLine(source, text); line > 0 {
-			i.addGlobal(declarationKey{node.Name, line}, observer.FunctionStaticScope)
+		if file, line := node.sourceLine(source, text, origins); line > 0 {
+			i.addGlobal(declarationKey{node.Name, file, line}, observer.FunctionStaticScope)
 		}
 	}
 	for _, child := range node.Inner {
-		i.findFunctionStatics(child, source, text)
+		i.findFunctionStatics(child, source, text, origins)
 	}
 }
 

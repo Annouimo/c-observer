@@ -104,7 +104,9 @@ func (Engine) Run(ctx context.Context, config observer.LaunchConfig) (result obs
 		finishError(err)
 		return
 	}
-	args := append(append([]string{"-std=c99"}, compilerArgs...), "-g", "-O0", source, "-o", exe)
+	compileArgs, libraries := separateLibraries(compilerArgs)
+	args := append(append([]string{"-std=c99"}, compileArgs...), "-g", "-O0", source)
+	args = append(append(args, libraries...), "-o", exe)
 	build := exec.CommandContext(ctx, compiler, args...)
 	build.Dir = dir
 	configureProcess(build)
@@ -123,12 +125,9 @@ func (Engine) Run(ctx context.Context, config observer.LaunchConfig) (result obs
 		}
 		return
 	}
-	identity := mainIdentity{source: source}
-	var index sourceIndex
-	if len(config.SourceMap) == 0 {
-		index = inspectSource(ctx, compiler, dir, source, files[source], compilerArgs)
-		identity.lines = index.mainLines
-	}
+	origins := buildSourceOrigins(files[source], dir, files, config.SourceMap)
+	index := inspectSource(ctx, compiler, dir, source, files[source], compileArgs, origins)
+	identity := mainIdentity{source: index.mainSource, lines: index.mainLines}
 	for path, original := range files {
 		data, err := os.ReadFile(path)
 		if err != nil || string(data) != original {
@@ -174,6 +173,31 @@ func (Engine) Run(ctx context.Context, config observer.LaunchConfig) (result obs
 		finishError(err)
 	}
 	return
+}
+
+// Libraries must follow the object that references them on ELF linkers.
+func separateLibraries(args []string) (compile, libraries []string) {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if i+1 < len(args) {
+			switch arg {
+			case "-l", "-Xlinker":
+				libraries = append(libraries, arg, args[i+1])
+				i++
+				continue
+			case "-Xclang", "-Xpreprocessor", "-Xassembler", "-lto_library":
+				compile = append(compile, arg, args[i+1])
+				i++
+				continue
+			}
+		}
+		if strings.HasPrefix(arg, "-Wl,") || strings.HasPrefix(arg, "-l") && arg != "-load" && arg != "-lto_library" {
+			libraries = append(libraries, arg)
+		} else {
+			compile = append(compile, arg)
+		}
+	}
+	return compile, libraries
 }
 
 func tool(ctx context.Context, dir, override string, names ...string) (string, error) {
@@ -361,11 +385,9 @@ func (c *capture) observe(exe, input string) error {
 		return errors.New("LLDB does not support a breakpoint at main")
 	}
 	points := []map[string]string{{"name": "main"}}
-	if !c.skip(c.identity.source) {
-		for _, name := range c.index.functions {
-			if name != "main" {
-				points = append(points, map[string]string{"name": name})
-			}
+	for _, fn := range c.index.functions {
+		if fn.name != "main" && !c.skip(fn.file) {
+			points = append(points, map[string]string{"name": fn.name})
 		}
 	}
 	if err := c.ask("setFunctionBreakpoints", map[string]any{"breakpoints": points}, nil); err != nil {
