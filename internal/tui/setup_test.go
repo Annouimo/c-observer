@@ -70,6 +70,7 @@ func TestSetupPreview(t *testing.T) {
 func TestSampledLineHistory(t *testing.T) {
 	m := NewPreview(fixture(t, "wrong-index"))
 	m.replay.Seek(1)
+	m = key(m, "c")
 	m = key(m, "h")
 	if m.mode != "line-history" || len(m.history) < 2 {
 		t.Fatal("expected repeated pauses at the selected line")

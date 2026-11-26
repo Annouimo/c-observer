@@ -10,9 +10,12 @@ import (
 )
 
 type Cell struct {
-	Text    string
-	Current string
-	Changed bool
+	Text           string
+	Current        string
+	Changed        bool
+	Path, Raw, Key string
+	Observed       bool
+	Truncated      bool
 }
 type DataTable struct {
 	Headers []string
@@ -42,7 +45,29 @@ func cellFor(r VariableRow) Cell {
 	if value == "" {
 		value = "—"
 	}
-	return Cell{Text: value, Current: r.Value, Changed: r.Changed}
+	return Cell{Text: value, Current: r.Value, Changed: r.Changed,
+		Path: r.Path, Key: r.Key, Raw: SafeText(r.Raw.Value, true),
+		Observed: r.Raw.Status == observer.Observed, Truncated: r.Raw.ValueTruncated}
+}
+
+// tableFields expands named structure fields into shared columns, while leaving
+// arrays as aggregates that can be inspected separately.
+func tableFields(parent VariableRow, rows []VariableRow) []VariableRow {
+	var out []VariableRow
+	for _, field := range childRows(parent, rows) {
+		if field.Raw.Kind == observer.Struct && field.Raw.Status == observer.Observed {
+			nested := tableFields(field, rows)
+			if len(nested) > 0 {
+				for _, child := range nested {
+					child.Name = field.Name + "." + child.Name
+					out = append(out, child)
+				}
+				continue
+			}
+		}
+		out = append(out, field)
+	}
+	return out
 }
 
 // TableFor renders only recorded children. A missing field is never treated as zero.
@@ -106,7 +131,7 @@ func TableFor(parent VariableRow, rows []VariableRow) DataTable {
 			t := DataTable{Headers: []string{"下标"}}
 			fields := map[string]bool{}
 			for _, c := range children {
-				for _, f := range childRows(c, rows) {
+				for _, f := range tableFields(c, rows) {
 					if !fields[f.Name] {
 						fields[f.Name] = true
 						t.Headers = append(t.Headers, f.Name)
@@ -117,7 +142,7 @@ func TableFor(parent VariableRow, rows []VariableRow) DataTable {
 				for _, c := range children {
 					line := []Cell{{Text: c.Name}}
 					byName := map[string]VariableRow{}
-					for _, f := range childRows(c, rows) {
+					for _, f := range tableFields(c, rows) {
 						byName[f.Name] = f
 					}
 					for _, name := range t.Headers[1:] {

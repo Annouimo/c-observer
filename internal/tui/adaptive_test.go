@@ -126,9 +126,9 @@ func TestFilteredNavigationAndStack(t *testing.T) {
 		t.Fatal("filtered navigation")
 	}
 	m.setFilter(0)
-	m = key(m, "m")
-	if !m.maximized {
-		t.Fatal("maximize")
+	m = key(m, "c")
+	if m.focus != 0 {
+		t.Fatal("source view")
 	}
 	m = key(m, "j")
 	m = key(m, "3")
@@ -160,19 +160,16 @@ func TestWorkspaceDimensions(t *testing.T) {
 	m.replay.Seek(2)
 	for _, size := range [][2]int{{100, 30}, {86, 14}, {45, 14}} {
 		for focus := 0; focus < 3; focus++ {
-			for _, maximized := range []bool{false, true} {
-				x := m
-				x.width, x.height = size[0], size[1]
-				x.focus = focus
-				x.maximized = maximized
-				lines := strings.Split(x.View(), "\n")
-				if len(lines) > x.height {
-					t.Fatalf("height %d > %d", len(lines), x.height)
-				}
-				for _, line := range lines {
-					if lipgloss.Width(line) > x.width {
-						t.Fatalf("width %d > %d: %q", lipgloss.Width(line), x.width, line)
-					}
+			x := m
+			x.width, x.height = size[0], size[1]
+			x.focus = focus
+			lines := strings.Split(x.View(), "\n")
+			if len(lines) > x.height {
+				t.Fatalf("height %d > %d", len(lines), x.height)
+			}
+			for _, line := range lines {
+				if lipgloss.Width(line) > x.width {
+					t.Fatalf("width %d > %d: %q", lipgloss.Width(line), x.width, line)
 				}
 			}
 		}
@@ -187,7 +184,7 @@ func TestManualMatrixRange(t *testing.T) {
 		row.Name = fmt.Sprintf("[%d]", i)
 		matrix.Children = append(matrix.Children, row)
 	}
-	m := Model{replay: NewReplay(testRun(matrix)), collapsed: map[string]bool{}}
+	m := Model{replay: NewReplay(testRun(matrix))}
 	row := m.replay.Rows(nil)[0]
 	m.openDisplayRange(row)
 	if m.displayFields != 4 {

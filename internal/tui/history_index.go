@@ -48,10 +48,11 @@ type lineKey struct {
 	Line int
 }
 type HistoryIndex struct {
-	Changes []int
-	Objects map[string][]HistoryEntry
-	Lines   map[lineKey][]HistoryEntry
-	Focus   map[string]FocusRange
+	Changes      []int
+	Objects      map[string][]HistoryEntry
+	Lines        map[lineKey][]HistoryEntry
+	Focus        map[string]FocusRange
+	PreviewWidth map[string]int
 }
 
 func capLabel(s string) string {
@@ -66,7 +67,7 @@ func capLabel(s string) string {
 // bounded ancestors. It stores change/baseline events and bounds, not copies of
 // the complete variable trees. Identity remains the engine's responsibility.
 func BuildHistoryIndex(run observer.RunResult) *HistoryIndex {
-	idx := &HistoryIndex{Objects: map[string][]HistoryEntry{}, Lines: map[lineKey][]HistoryEntry{}, Focus: map[string]FocusRange{}}
+	idx := &HistoryIndex{Objects: map[string][]HistoryEntry{}, Lines: map[lineKey][]HistoryEntry{}, Focus: map[string]FocusRange{}, PreviewWidth: map[string]int{}}
 	evidence := map[string]*arrayEvidence{}
 	lastSeen := map[string]int{}
 	r := Replay{Run: run}
@@ -87,9 +88,12 @@ func BuildHistoryIndex(run observer.RunResult) *HistoryIndex {
 			byKey[v.Key] = v
 		}
 		changedLabels := map[string][]string{}
-		var allLabels []string
 		anyChange := false
 		for _, v := range rows {
+			if len(v.Raw.Children) == 0 {
+				key := layoutKey(v.Path)
+				idx.PreviewWidth[key] = max(idx.PreviewWidth[key], cellWidth(v.Value))
+			}
 			if v.Raw.Kind == observer.Array && v.Reliable {
 				if evidence[v.Key] == nil {
 					evidence[v.Key] = &arrayEvidence{}
@@ -98,9 +102,6 @@ func BuildHistoryIndex(run observer.RunResult) *HistoryIndex {
 			if v.Changed {
 				anyChange = true
 				label := capLabel(SafeText(v.Path, false) + ": " + v.Before + " → " + v.Value)
-				if len(allLabels) < 6 {
-					allLabels = append(allLabels, label)
-				}
 				for parent := v.Parent; parent != ""; {
 					a, ok := byKey[parent]
 					if !ok {
@@ -157,6 +158,9 @@ func BuildHistoryIndex(run observer.RunResult) *HistoryIndex {
 			}
 			seen, ok := lastSeen[v.Key]
 			entry := HistoryEntry{Position: pos, Location: s.Location}
+			if step := r.Step(); step.HasInterval() {
+				entry.Location = step.Origin
+			}
 			switch {
 			case !ok || seen != pos-1:
 				entry.Text = "观测起点 · " + cellFor(v).Text
@@ -178,11 +182,7 @@ func BuildHistoryIndex(run observer.RunResult) *HistoryIndex {
 		}
 		if s.Location.File != "" && s.Location.Line > 0 {
 			key := lineKey{s.Location.File, s.Location.Line}
-			label := "暂停于此行"
-			if len(allLabels) > 0 {
-				label += " · " + strings.Join(allLabels, "; ")
-			}
-			idx.Lines[key] = append(idx.Lines[key], HistoryEntry{Position: pos, Location: s.Location, Text: capLabel(label), Changed: anyChange})
+			idx.Lines[key] = append(idx.Lines[key], HistoryEntry{Position: pos, Location: s.Location, Text: "暂停于此行（不代表此行已执行）"})
 		}
 	}
 	for key, ev := range evidence {
