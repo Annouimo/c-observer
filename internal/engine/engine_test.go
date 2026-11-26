@@ -313,3 +313,46 @@ func TestRealGlobalsAndStatics(t *testing.T) {
 			visits, sawTotal, sawCell, sawRecursion)
 	}
 }
+
+func TestRealMappedCallbackAndIdentity(t *testing.T) {
+	config := realConfig(t)
+	user := filepath.Join(config.WorkDir, "frozen.c")
+	original := "static int compare(int x) { return x + 1; }\n" +
+		"int main(void) {\n    int values[2] = { 28, 0 };\n" +
+		"    values[0] = helper(compare, values[0]);\n    return values[0] != 29;\n}\n"
+	assembled := "#line 1 \"preset/helper.c\"\nstatic int helper(int (*fn)(int), int x) { return fn(x); }\n" +
+		"#line 1 \"student.c\"\n" + original
+	for file, text := range map[string]string{user: original, config.SourcePath: assembled} {
+		if err := os.WriteFile(file, []byte(text), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	config.VisibleSourcePaths = []string{user}
+	config.SourceMap = map[string]string{"student.c": user, filepath.Join(config.WorkDir, "student.c"): user}
+	config.KeepLocations, config.ArrayRanges = nil, nil
+	result := (Engine{}).Run(context.Background(), config)
+	if result.Reason != observer.Exited || result.CleanupError != "" {
+		t.Fatalf("mapped run: %s %s cleanup %q", result.Reason, result.Message, result.CleanupError)
+	}
+	callback := false
+	ids := map[string]string{}
+	for _, s := range result.Snapshots {
+		if s.Location.File != user || s.Location.Function == "helper" {
+			t.Fatalf("unexpected preset or unmapped stop: %+v", s.Location)
+		}
+		callback = callback || s.Location.Function == "compare"
+		for _, f := range s.Frames {
+			for _, v := range f.Variables {
+				if v.Name == "values" && f.IdentityReliable && v.IdentityReliable && len(v.Children) > 0 {
+					child := v.Children[0]
+					if child.IdentityReliable {
+						ids[child.Value] = child.ID
+					}
+				}
+			}
+		}
+	}
+	if !callback || ids["28"] == "" || ids["28"] != ids["29"] {
+		t.Fatalf("mapped callback or array identity missing: callback=%v ids=%v", callback, ids)
+	}
+}

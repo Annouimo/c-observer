@@ -206,10 +206,10 @@ func (c *capture) collectGlobals(ref int, nodes *int, seen map[declarationKey]bo
 	}
 	for _, raw := range vars {
 		decl := raw.Extensions.Declaration
-		if decl == nil || c.location(decl.Path, decl.Line, "").File != c.identity.source {
+		if decl == nil {
 			continue
 		}
-		key := declarationKey{variableName(raw), decl.Line}
+		key := declarationKey{variableName(raw), c.location(decl.Path, decl.Line, "").File, decl.Line}
 		scope := c.index.globals[key]
 		if scope == "" || seen[key] {
 			continue
@@ -217,7 +217,7 @@ func (c *capture) collectGlobals(ref int, nodes *int, seen map[declarationKey]bo
 		if *nodes == 0 {
 			break
 		}
-		id := fmt.Sprintf("static-storage:%d:%s", key.line, key.name)
+		id := fmt.Sprintf("static-storage:%s:%d:%s", key.file, key.line, key.name)
 		v, err := c.variable(raw, id, key.name, nil, 0, nodes)
 		if err != nil {
 			return err
