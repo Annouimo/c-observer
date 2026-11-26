@@ -19,6 +19,6 @@ c-observer --capabilities
 
 以上命令以已位于对应原生程序所在目录或 PATH 中为前提；npm 包不安装全局 CLI shim。
 
-源码与协议：https://github.com/Annouimo/c-observer
+源码与协议：https://github.com/Routilet/c-observer
 
 MIT License；第三方许可证及声明见 THIRD_PARTY_NOTICES.txt。考试中使用须符合课程规定。

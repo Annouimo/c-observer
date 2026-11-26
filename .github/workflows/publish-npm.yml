@@ -90,6 +90,7 @@ jobs:
           const pkg=JSON.parse(fs.readFileSync(path.join(root,"package.json")));
           const m=JSON.parse(fs.readFileSync(path.join(root,"manifest.json")));
           if(pkg.name!=="@annouimo/c-observer" || pkg.version!==process.env.VERSION || m.version!==pkg.version || pkg.scripts) throw Error("unexpected package metadata");
+          if(pkg.repository?.url!=="git+https://github.com/Routilet/c-observer.git") throw Error("GitHub provenance repository mismatch");
           if(process.env.MODE==="DRY_RUN" ? pkg.private!==true : pkg.private===true || pkg.publishConfig?.tag!=="next") throw Error("incorrect publication metadata");
           if(pkg.license!=="MIT" || !fs.existsSync(path.join(root,"LICENSE")) || !fs.existsSync(path.join(root,"THIRD_PARTY_NOTICES.txt"))) throw Error("license files missing");
           for(const p of Object.values(m.platforms)) {
@@ -111,6 +112,7 @@ jobs:
           const root=process.env.ROOT;
           const p=JSON.parse(fs.readFileSync(path.join(root,"package.json")));
           if(p.private===true || p.license!=="MIT" || p.publishConfig?.access!=="public" || p.publishConfig?.tag!=="next" || p.scripts) throw Error("unexpected public metadata");
+          if(p.repository?.url!=="git+https://github.com/Routilet/c-observer.git") throw Error("GitHub provenance repository mismatch");
           for(const name of ["LICENSE","THIRD_PARTY_NOTICES.txt","manifest.json"]) if(!fs.statSync(path.join(root,name)).size) throw Error("missing "+name);
           NODE
       - uses: actions/upload-artifact@v4

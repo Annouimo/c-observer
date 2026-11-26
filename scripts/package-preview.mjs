@@ -46,7 +46,9 @@ await fs.writeFile(path.join(pkg, "manifest.json"), JSON.stringify(manifest, nul
 await fs.copyFile("docs/npm-readme.md", path.join(pkg, "README.md"));
 await fs.writeFile(path.join(pkg, "package.json"), JSON.stringify({
   name: "@annouimo/c-observer", version, description: "C Observer native binary distribution (preview)",
-  repository: { type: "git", url: "git+https://github.com/Annouimo/c-observer.git" },
+  repository: { type: "git", url: "git+https://github.com/Routilet/c-observer.git" },
+  homepage: "https://github.com/Routilet/c-observer#readme",
+  bugs: { url: "https://github.com/Routilet/c-observer/issues" },
   license: "MIT",
   ...(publishable ? { publishConfig: { access: "public", tag: "next" } } : { private: true }),
   files: ["bin", "manifest.json", "README.md", "LICENSE", "THIRD_PARTY_NOTICES.txt"],
