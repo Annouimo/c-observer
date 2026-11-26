@@ -2,7 +2,7 @@ name: Verify Observer (no publishing)
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, feat/tui]
   workflow_dispatch:
 
 permissions:
