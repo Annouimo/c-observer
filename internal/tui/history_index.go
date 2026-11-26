@@ -101,6 +101,8 @@ func BuildHistoryIndex(run observer.RunResult) *HistoryIndex {
 			}
 			if v.Changed {
 				anyChange = true
+			}
+			if v.ReliableChange {
 				label := capLabel(SafeText(v.Path, false) + ": " + v.Before + " → " + v.Value)
 				for parent := v.Parent; parent != ""; {
 					a, ok := byKey[parent]
@@ -128,7 +130,7 @@ func BuildHistoryIndex(run observer.RunResult) *HistoryIndex {
 						ev = &arrayEvidence{}
 						evidence[a.Key] = ev
 					}
-					if child.Raw.Index == nil || !child.Reliable || !v.Reliable {
+					if child.Raw.Index == nil || !child.Reliable || !v.Reliable || v.Changed && !v.ReliableChange {
 						ev.unreliable = true
 					}
 					if child.Raw.Index != nil {
@@ -139,7 +141,7 @@ func BuildHistoryIndex(run observer.RunResult) *HistoryIndex {
 								ev.cols.Add(*inner)
 							}
 						}
-						if v.Changed && child.Reliable {
+						if v.ReliableChange && child.Reliable {
 							ev.changedRows.Add(*child.Raw.Index)
 							if child.Raw.Kind == observer.Array && inner != nil {
 								ev.changedCols.Add(*inner)
@@ -163,8 +165,10 @@ func BuildHistoryIndex(run observer.RunResult) *HistoryIndex {
 			}
 			switch {
 			case !ok || seen != pos-1:
-				entry.Text = "观测起点 · " + cellFor(v).Text
-			case v.Changed:
+				baseline := v
+				baseline.Changed = false
+				entry.Text = "观测起点 · " + cellFor(baseline).Text
+			case v.ReliableChange:
 				entry.Text = v.Before + " → " + v.Value
 				entry.Changed = true
 			case len(changedLabels[v.Key]) > 0:

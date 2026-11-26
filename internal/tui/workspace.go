@@ -169,10 +169,40 @@ func (m Model) workspaceMode() bool {
 	}
 	return false
 }
+
+type menuAction struct {
+	key, label string
+}
+
+func (m Model) actions() []menuAction {
+	actions := []menuAction{{"c", "C 完整源码"}, {"i", "I 输入输出"}, {"j", "J 跳转快照"}, {"f", "F 筛选回放"}, {"s", "S 调用栈"}}
+	if m.focus == 1 && !m.replay.End() {
+		actions = append(actions, menuAction{"d", "D 数据详情"}, menuAction{"h", "H 变化历史"}, menuAction{"o", "O 对象操作"})
+	}
+	if m.record != nil && !m.offline && !m.demo {
+		actions = append(actions, menuAction{"w", "W 导出观察记录"})
+	}
+	if m.offline || m.demo {
+		actions = append(actions, menuAction{"r", "R 重置回放"})
+	} else {
+		actions = append(actions, menuAction{"r", "R 重新运行"})
+	}
+	if m.standalone {
+		actions = append(actions, menuAction{"e", "E 修改启动配置"})
+	}
+	return append(actions, menuAction{"q", "Q 退出"})
+}
+
 func (m Model) menuOptions() []string {
 	switch m.mode {
+	case "help":
+		var options []string
+		for _, a := range m.actions() {
+			options = append(options, a.label)
+		}
+		return options
 	case "filter":
-		return []string{"全部快照", "任意可靠数据变化", "当前选中变量变化", "当前选中源码行"}
+		return []string{"全部快照", "只看有变化的步骤", "当前变量历史变化", "当前选中源码行"}
 	case "object":
 		return []string{"查看数据详情", "查看变化历史", "仅导航此对象的变化", "切换自动范围 / 全部已采集", "手动设置展示范围", "调整采集范围并重跑"}
 	case "stack":
@@ -211,10 +241,8 @@ func (m *Model) handleWorkspace(msg tea.KeyMsg) tea.Cmd {
 		}
 		return nil
 	}
-	if m.mode == "help" {
-		if k == "enter" || k == "?" {
-			m.mode = ""
-		}
+	if m.mode == "help" && k == "?" {
+		m.mode = ""
 		return nil
 	}
 	if m.mode == "jump" || m.mode == "display-range" {
@@ -236,6 +264,12 @@ func (m *Model) handleWorkspace(msg tea.KeyMsg) tea.Cmd {
 			return nil
 		}
 		switch m.mode {
+		case "help":
+			action := m.actions()[m.menuCursor]
+			m.mode = ""
+			next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(action.key)})
+			*m = next.(Model)
+			return cmd
 		case "filter":
 			m.setFilter(m.menuCursor)
 		case "stack":
@@ -407,7 +441,7 @@ func isDigits(s string) bool {
 }
 
 func (m Model) workspaceOverlay(w, h int) string {
-	titles := map[string]string{"filter": "导航模式", "stack": "选择调用栈帧", "jump": "跳转快照", "help": "操作帮助", "object": "对象操作", "display-range": "展示范围", "record-confirm": "导出观察记录", "record-result": "导出结果"}
+	titles := map[string]string{"filter": "导航模式", "stack": "选择调用栈帧", "jump": "跳转快照", "help": "更多操作", "object": "对象操作", "display-range": "展示范围", "record-confirm": "导出观察记录", "record-result": "导出结果"}
 	lines := []string{accent.Render(clip("C Observer / "+titles[m.mode], w)), ""}
 	switch m.mode {
 	case "record-confirm":
@@ -423,19 +457,18 @@ func (m Model) workspaceOverlay(w, h int) string {
 		lines = append(lines, "", "Enter / Esc 返回")
 		return fixed(lines, w, h)
 	case "help":
-		for _, line := range []string{
-			"←/→ 回放    Home/End 首尾    J 指定快照",
-			"↑/↓ 选择    Tab/Shift+Tab 切换区域",
-			"Enter 详情或确认    Esc 返回    Q 退出",
-			"C 源码    I 输入输出    F 筛选    H 历史",
-			"S 调用栈    O 对象菜单    详情内 T 全部成员",
-			"D 数据表    V 全部/自动范围    A 采集范围",
-			"[/] 源码横向移动 / 数据表翻列",
-			"R 重跑 / 离线重置    E 修改独立启动配置",
-			"W 导出现场观察记录（需确认）",
-			"值变化来自相邻已采集快照，不等于完整赋值日志。",
-		} {
-			lines = append(lines, clip(line, w))
+		lines = append(lines, muted.Render(clip("←/→ 回放 · ↑/↓ 选择 · Home/End 首尾 · Tab 切换", w)))
+		lines = append(lines, muted.Render(clip("变化是相邻快照差异，不代表确切赋值。", w)))
+		lines = append(lines, muted.Render(clip("身份不明时按名称、类型、路径对应；≈ 表示相同预览。", w)))
+		options := m.menuOptions()
+		n := max(1, h-6)
+		start := max(0, min(m.menuCursor-n+1, max(0, len(options)-n)))
+		for i := start; i < min(len(options), start+n); i++ {
+			label := clip("  "+options[i], w)
+			if i == m.menuCursor {
+				label = selected.Render(clip("> "+options[i], w))
+			}
+			lines = append(lines, label)
 		}
 	case "jump":
 		lines = append(lines, clip(fmt.Sprintf("快照编号 (1..%d): %s▏", len(m.replay.Run.Snapshots), m.jumpInput), w))

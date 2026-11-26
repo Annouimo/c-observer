@@ -6,6 +6,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/Routilet/c-observer/internal/observer"
 	"github.com/mattn/go-runewidth"
 )
 
@@ -94,31 +95,36 @@ func sampleEqual(expected, actual []byte, mode string) (bool, bool) {
 	return normalize(expected) == normalize(actual), true
 }
 
+// sampleStatus is about this completed run, never a verdict at a pause.
+func (m Model) sampleStatus() string {
+	run := m.replay.Run
+	if run.Reason != observer.Exited || run.ExitCode != nil && *run.ExitCode != 0 {
+		return "运行未正常结束"
+	}
+	if run.Output.StdoutTruncated {
+		return "输出不完整"
+	}
+	if m.config.ExpectedStdout == nil {
+		return ""
+	}
+	equal, _ := sampleEqual(*m.config.ExpectedStdout, run.Output.Stdout, m.config.Comparison)
+	if equal {
+		return "样例输出一致"
+	}
+	return "样例输出不一致"
+}
+
 func (m Model) outputComparison(w, h int) string {
-	lines := []string{head(" 输出对照 · 逐字节比较（非 OJ 判定）", m.focus == 2, w)}
+	lines := []string{head(" 最终输出对照", m.focus == 2, w)}
 	if m.config.ExpectedStdout == nil {
 		return fixed(append(lines, "未提供预期输出。"), w, h)
 	}
-	out, _ := m.replay.Output()
-	if !m.replay.End() {
-		lines = append(lines, muted.Render(clip("当前已捕获前缀，尚不能判定最终输出。", w)))
-	} else if m.replay.Run.Output.StdoutTruncated {
-		lines = append(lines, warning.Render(clip("实际输出已截断，无法确认完整结果。", w)))
-	} else if m.replay.Run.Reason != "exited" {
-		lines = append(lines, warning.Render(clip("程序未正常结束；仅比较已捕获输出。", w)))
+	out := m.replay.Run.Output.Stdout
+	lines = append(lines, muted.Render(clip(m.sampleStatus(), w)))
+	if m.replay.Run.Reason != observer.Exited || m.replay.Run.Output.StdoutTruncated {
+		lines = append(lines, warning.Render(clip("仅比较已记录输出。", w)))
 	} else {
-		msg := "输出有差异"
-		if bytes.Equal(*m.config.ExpectedStdout, out) {
-			msg = "输出一致"
-		}
-		lines = append(lines, muted.Render(msg))
-		if equal, applied := sampleEqual(*m.config.ExpectedStdout, out, m.config.Comparison); applied {
-			sample := "按样例规则：不一致"
-			if equal {
-				sample = "按样例规则：一致"
-			}
-			lines = append(lines, muted.Render(clip(sample+"（原始字节仍单独显示）", w)))
-		}
+		lines = append(lines, muted.Render(clip("下表逐字节展示差异。", w)))
 	}
 	lines = append(lines, muted.Render(clip("· 空格  ↵ 换行  \\t 制表符  \\r 回车", w)))
 	rows := CompareOutput(*m.config.ExpectedStdout, out)
@@ -174,7 +180,7 @@ func (m Model) comparisonLength(w int) int {
 	if m.config.ExpectedStdout == nil {
 		return 1
 	}
-	out, _ := m.replay.Output()
+	out := m.replay.Run.Output.Stdout
 	return len(comparisonRows(CompareOutput(*m.config.ExpectedStdout, out), w))
 }
 func wrapCells(text string, w int) []string {

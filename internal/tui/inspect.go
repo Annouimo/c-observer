@@ -16,6 +16,8 @@ type Cell struct {
 	Path, Raw, Key string
 	Observed       bool
 	Truncated      bool
+	PreviewValue   string
+	PreviewKnown   bool
 }
 type DataTable struct {
 	Headers []string
@@ -47,7 +49,9 @@ func cellFor(r VariableRow) Cell {
 	}
 	return Cell{Text: value, Current: r.Value, Changed: r.Changed,
 		Path: r.Path, Key: r.Key, Raw: SafeText(r.Raw.Value, true),
-		Observed: r.Raw.Status == observer.Observed, Truncated: r.Raw.ValueTruncated}
+		Observed: r.Raw.Status == observer.Observed, Truncated: r.Raw.ValueTruncated,
+		PreviewValue: r.Raw.Value, PreviewKnown: r.Raw.Status == observer.Observed && !r.Raw.ValueTruncated &&
+			(r.Raw.Kind == observer.String || r.Raw.Kind == observer.Scalar || r.Raw.Kind == observer.Pointer)}
 }
 
 // tableFields expands named structure fields into shared columns, while leaving

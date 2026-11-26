@@ -378,7 +378,15 @@ func (m Model) inspector(w, h int) string {
 		if !ok {
 			lines = append(lines, "当前快照中无法确认此对象；不显示旧值。")
 		} else {
-			lines = append(lines, clip(row.Type+" · "+cellFor(row).Text, w), muted.Render(clip(m.rangeLabel(row), w)))
+			lines = append(lines, clip(row.Type+" · "+cellFor(row).Text, w))
+			note := m.rangeLabel(row)
+			if !row.Reliable || row.Changed && !row.ReliableChange {
+				if note != "" {
+					note += " · "
+				}
+				note += "名称对应，仅供观察"
+			}
+			lines = append(lines, muted.Render(clip(note, w)))
 			t := m.detailTable(row)
 			label := "关注范围"
 			if m.detailTree {

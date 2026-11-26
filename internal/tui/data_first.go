@@ -26,7 +26,8 @@ func (m Model) executionContext(w int) []string {
 	}
 	lines := []string{muted.Render(clip(SafeText(title, false), w))}
 	src := sourceFor(m.replay.Run, loc.File)
-	source := strings.Split(src, "\n")
+	source := strings.Split(SafeText(src, true), "\n")
+	tokens := lexC(strings.Join(source, "\n"))
 	radius := 0
 	if m.height >= 24 {
 		radius = 1
@@ -36,7 +37,8 @@ func (m Model) executionContext(w int) []string {
 		case loc.File != "" && src != "" && i > 0 && i <= len(source):
 			text := strings.TrimSpace(SafeText(source[i-1], false))
 			if i == loc.Line {
-				lines = append(lines, accent.Render(clip(fmt.Sprintf("▸ %d  %s", i, text), w)))
+				prefix := fmt.Sprintf("▸ %d ", i)
+				lines = append(lines, accent.Render(prefix)+renderTokens(tokens[i-1], max(0, w-cellWidth(prefix))))
 			} else {
 				lines = append(lines, muted.Render(clip(fmt.Sprintf("  %d  %s", i, text), w)))
 			}
@@ -46,34 +48,7 @@ func (m Model) executionContext(w int) []string {
 			lines = append(lines, "")
 		}
 	}
-	if !step.HasInterval() {
-		return append(lines, muted.Render(clip("尚无前一份记录，不能归因于当前行。", w)))
-	}
-	var labels []string
-	count := 0
-	for _, row := range m.replay.Rows(nil) {
-		if row.Changed {
-			count++
-			if len(labels) < 2 {
-				labels = append(labels, SafeText(row.Path, false)+": "+row.Before+" → "+row.Value)
-			}
-		}
-	}
-	const prefix = "区间变化（单行归因未确认）: "
-	summary := "无已观测可靠变化"
-	for n := len(labels); n > 0; n-- {
-		candidate := strings.Join(labels[:n], "; ")
-		if n < count {
-			candidate += fmt.Sprintf(" 等 %d 项", count)
-		}
-		if cellWidth(prefix+candidate) <= w {
-			summary = candidate
-			break
-		}
-		summary = fmt.Sprintf("%d 项 · H 查看历史", count)
-	}
-	lines = append(lines, clip(prefix+summary, w))
-	return lines
+	return append(lines, m.comparisonSummary(w))
 }
 
 var layoutIndex = regexp.MustCompile(`\[[0-9]+\]`)
@@ -83,9 +58,11 @@ func cellWidth(text string) int    { return runewidth.StringWidth(text) }
 
 func rootRows(all []VariableRow) []VariableRow {
 	var roots []VariableRow
-	for _, row := range all {
-		if row.Depth == 0 {
-			roots = append(roots, row)
+	for _, isAggregate := range []bool{false, true} {
+		for _, row := range all {
+			if row.Depth == 0 && aggregate(row) == isAggregate {
+				roots = append(roots, row)
+			}
 		}
 	}
 	return roots
@@ -97,10 +74,10 @@ type previewGroup struct {
 	widths   []int
 	sequence bool
 	cropped  bool
+	folded   bool
 }
 
 type observationBlock struct {
-	rangeText            string
 	title                string
 	groups               []previewGroup
 	minWidth, idealWidth int
@@ -108,8 +85,7 @@ type observationBlock struct {
 }
 
 func aggregate(row VariableRow) bool {
-	return row.Raw.Kind == observer.Array || row.Raw.Kind == observer.Struct ||
-		row.Raw.Kind == observer.String && len(row.Raw.Children) > 0
+	return row.Raw.Kind == observer.Array || row.Raw.Kind == observer.Struct
 }
 
 func (m Model) measuredValue(path, value string) int {
@@ -122,7 +98,34 @@ func (m Model) measuredValue(path, value string) int {
 
 func (m Model) previewGroup(row VariableRow, all []VariableRow, title string) previewGroup {
 	table := m.dataTable(row, all)
+	// A collapsed string or aggregate cell may contain a reliably changed
+	// descendant even when its own display value is unchanged.
+	descendantChanges := map[string]bool{}
+	parents := map[string]string{}
+	for _, node := range all {
+		parents[node.Key] = node.Parent
+	}
+	for _, child := range all {
+		if !child.Changed {
+			continue
+		}
+		for key := child.Parent; key != "" && !descendantChanges[key]; key = parents[key] {
+			descendantChanges[key] = true
+		}
+	}
+	for i := range table.Rows {
+		for j := range table.Rows[i] {
+			c := &table.Rows[i][j]
+			if c.Key != "" && descendantChanges[c.Key] {
+				c.Changed = true
+			}
+		}
+	}
 	g := previewGroup{title: title, table: table, widths: make([]int, len(table.Headers))}
+	if row.Raw.Kind == observer.Array && !m.fullArrays[row.Key] {
+		g.table, g.folded = foldPreviewRows(table)
+		table = g.table
+	}
 	focus := m.displayFocus(row)
 	if focus.Rows.Valid {
 		for _, child := range row.Raw.Children {
@@ -188,9 +191,6 @@ func (m Model) makeBlock(row VariableRow, all []VariableRow, w int, active bool)
 		prefix = ">"
 	}
 	name := prefix + row.Name
-	if row.Parent == "globals" {
-		name += "⁺"
-	}
 	b := observationBlock{title: name}
 	if !aggregate(row) || row.Raw.Status != observer.Observed {
 		value := row.Value
@@ -203,13 +203,9 @@ func (m Model) makeBlock(row VariableRow, all []VariableRow, w int, active bool)
 		return b
 	}
 	b.aggregate = true
-	b.rangeText = m.rangeLabel(row)
-	b.title = name + fmt.Sprintf(" · %d", len(row.Raw.Children))
+	b.title = name
 	if row.Raw.ArrayLength != nil {
-		b.title += fmt.Sprintf("/%d", *row.Raw.ArrayLength)
-	}
-	if !row.Raw.ChildrenComplete {
-		b.title += " · 缺采"
+		b.title = fmt.Sprintf("%s[%d]", name, *row.Raw.ArrayLength)
 	}
 	b.minWidth = min(w, max(16, min(26, cellWidth(b.title))))
 	b.idealWidth = min(w, max(b.minWidth, cellWidth(b.title)))
@@ -263,8 +259,9 @@ func previewCell(c Cell, width int) string {
 }
 
 type previewLine struct {
-	text  string
-	cells int
+	text     string
+	cells    int
+	priority bool
 }
 
 func (g previewGroup) render(w int) ([]previewLine, bool) {
@@ -280,11 +277,13 @@ func (g previewGroup) render(w int) ([]previewLine, bool) {
 		perLine := max(1, (w+1)/(cell+1))
 		for start := 0; start < len(g.table.Rows); start += perLine {
 			var keys, values []string
+			priority := false
 			for _, row := range g.table.Rows[start:min(start+perLine, len(g.table.Rows))] {
 				keys = append(keys, pad(clip(row[0].Text, cell), cell))
 				values = append(values, previewCell(row[1], cell))
+				priority = priority || row[1].Changed
 			}
-			lines = append(lines, previewLine{text: muted.Render(strings.Join(keys, " "))}, previewLine{text: strings.Join(values, " "), cells: len(values)})
+			lines = append(lines, previewLine{text: muted.Render(strings.Join(keys, " ")), priority: priority}, previewLine{text: strings.Join(values, " "), cells: len(values), priority: priority})
 		}
 		return lines, g.cropped
 	}
@@ -323,7 +322,11 @@ func (g previewGroup) render(w int) ([]previewLine, bool) {
 		lines = append(lines, previewLine{text: muted.Render(draw(header))})
 	}
 	for _, row := range g.table.Rows {
-		lines = append(lines, previewLine{text: draw(row), cells: max(0, min(len(row), len(widths))-1)})
+		priority := false
+		for _, c := range row {
+			priority = priority || c.Changed
+		}
+		lines = append(lines, previewLine{text: draw(row), cells: max(0, min(len(row), len(widths))-1), priority: priority})
 	}
 	return lines, hidden
 }
@@ -340,7 +343,7 @@ func packObservations(blocks []observationBlock, w, widthClass int) []observatio
 	used := 0
 	for i, b := range blocks {
 		width := b.minWidth + (b.idealWidth-b.minWidth)*widthClass/3
-		if len(shelves) == 0 || used+2+width > w {
+		if len(shelves) == 0 || used+2+width > w || blocks[shelves[len(shelves)-1].indices[0]].aggregate != b.aggregate {
 			shelves = append(shelves, observationShelf{height: 1, fullHeight: 1})
 			used = 0
 		}
@@ -393,7 +396,12 @@ func (m Model) dataFirstPanel(w, h int) string {
 	for i, row := range roots {
 		blocks[i] = m.makeBlock(row, all, w, i == m.varCursor)
 	}
-	budget := max(1, h-2)
+	budget := max(1, h-1)
+	current := m.replay.Current()
+	if m.replay.Frame > 0 || !current.GlobalsComplete && m.replay.Run.Session.Capabilities.Globals ||
+		m.replay.Frame < len(current.Frames) && !current.Frames[m.replay.Frame].VariablesComplete {
+		budget = max(1, budget-1)
+	}
 	var view []observationShelf
 	var hiddenColumns, offscreen bool
 	bestRoots, bestCells := -1, -1
@@ -413,14 +421,15 @@ func (m Model) dataFirstPanel(w, h int) string {
 					title = changed.Render(title)
 				}
 				lines := []previewLine{{text: title}}
-				if b.rangeText != "" {
-					label, _, _ := strings.Cut(b.rangeText, " · ")
-					lines = append(lines, previewLine{text: muted.Render(clip(label, width))})
-				}
 				horizontal = horizontal || cellWidth(b.title) > width
 				for _, g := range b.groups {
 					extra, hidden := g.render(width)
 					horizontal = horizontal || hidden
+					if len(b.groups) != 1 || g.sequence && g.widths[1] <= 11 {
+						for i := range extra {
+							extra[i].priority = false
+						}
+					}
 					lines = append(lines, extra...)
 				}
 				shelf.lines = append(shelf.lines, lines)
@@ -432,7 +441,7 @@ func (m Model) dataFirstPanel(w, h int) string {
 		for _, shelf := range candidate {
 			heads += len(shelf.indices)
 			for _, block := range shelf.lines {
-				for _, line := range block[:min(shelf.height, len(block))] {
+				for _, line := range visiblePreview(block, shelf.height) {
 					cells += line.cells
 				}
 			}
@@ -445,26 +454,32 @@ func (m Model) dataFirstPanel(w, h int) string {
 			break
 		}
 	}
-	label := fmt.Sprintf("数据 · %d 个对象", len(roots))
-	if len(m.replay.Current().Globals) > 0 {
-		label += " · ⁺ 全局/静态"
-	}
+	label := ""
 	if m.replay.Frame > 0 {
 		label += fmt.Sprintf(" · 栈帧 #%d", m.replay.Frame)
 	}
 	if !m.replay.Current().GlobalsComplete && m.replay.Run.Session.Capabilities.Globals {
-		label += " · 部分全局"
+		label += " · 部分变量未记录"
 	}
 	if frame := m.replay.Frame; frame < len(m.replay.Current().Frames) && !m.replay.Current().Frames[frame].VariablesComplete {
-		label += " · 部分局部"
+		if !strings.Contains(label, "部分变量未记录") {
+			label += " · 部分变量未记录"
+		}
 	}
-	lines := []string{muted.Render(clip(label, w))}
+	var lines []string
+	if label != "" {
+		lines = append(lines, muted.Render(clip(strings.TrimPrefix(label, " · "), w)))
+	}
 	hidden := hiddenColumns || offscreen
 	for _, s := range view {
 		hidden = hidden || s.height < s.fullHeight
+		visible := make([][]previewLine, len(s.lines))
+		for j, block := range s.lines {
+			visible[j] = visiblePreview(block, s.height)
+		}
 		for i := 0; i < s.height; i++ {
 			var cells []string
-			for j, block := range s.lines {
+			for j, block := range visible {
 				line := ""
 				if i < len(block) {
 					line = block[i].text
@@ -474,10 +489,22 @@ func (m Model) dataFirstPanel(w, h int) string {
 			lines = append(lines, strings.Join(cells, "  "))
 		}
 	}
-	if hidden {
-		hint := "部分已采集值未展示 · D 详情"
+	folded, incomplete := false, false
+	for _, r := range roots {
+		incomplete = incomplete || aggregate(r) && !r.Raw.ChildrenComplete
+	}
+	for _, b := range blocks {
+		for _, g := range b.groups {
+			folded = folded || g.folded
+		}
+	}
+	if hidden || folded || incomplete {
+		hint := "… Enter 查看更多"
+		if incomplete {
+			hint = "… 部分数据未记录 · Enter 详情"
+		}
 		if offscreen {
-			hint = "↑/↓ 浏览其余对象 · D 详情"
+			hint = "↑/↓ 查看其他变量"
 		}
 		lines = append(lines, muted.Render(clip(hint, w)))
 	}
@@ -497,9 +524,11 @@ func fitObservationShelves(shelves []observationShelf, budget, cursor int) []obs
 	start := 0
 	if len(shelves) > budget {
 		for i, s := range shelves {
-			if cursor >= s.indices[0] && cursor <= s.indices[len(s.indices)-1] {
-				start = max(0, min(i-budget+1, len(shelves)-budget))
-				break
+			for _, index := range s.indices {
+				if cursor == index {
+					start = max(0, min(i-budget+1, len(shelves)-budget))
+					break
+				}
 			}
 		}
 	}
@@ -534,4 +563,48 @@ func fitObservationShelves(shelves []observationShelf, budget, cursor int) []obs
 		}
 	}
 	return view
+}
+
+// Keep titles and context, then prioritize changed rows over unchanged rows.
+// Output order remains chronological/index order; details retain every row.
+func visiblePreview(lines []previewLine, height int) []previewLine {
+	if len(lines) <= height {
+		return lines
+	}
+	if height <= 0 {
+		return nil
+	}
+	keep := make([]bool, len(lines))
+	keep[0] = true
+	count := 1
+	// Keep all leading context (title, range, column headings).
+	for i := 1; i < len(lines) && lines[i].cells == 0 && count < height; i++ {
+		keep[i] = true
+		count++
+	}
+	for i, line := range lines {
+		if count == height {
+			break
+		}
+		if line.priority && !keep[i] {
+			keep[i] = true
+			count++
+		}
+	}
+	for i := range lines {
+		if count == height {
+			break
+		}
+		if !keep[i] {
+			keep[i] = true
+			count++
+		}
+	}
+	out := make([]previewLine, 0, count)
+	for i, line := range lines {
+		if keep[i] {
+			out = append(out, line)
+		}
+	}
+	return out
 }
