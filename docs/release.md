@@ -6,7 +6,9 @@
 
 ## npm Trusted Publishing 准备
 
-包名 @annouimo/c-observer。npm 侧配置 GitHub Actions：Organization/user Annouimo；Repository c-observer；Workflow filename publish-npm.yml；Environment 留空；允许 npm publish（仅 stage 权限不能运行此工作流）。不创建 token。新授权必须在两天内首次成功发布，建议首发可用且 workflow 已在 main 时再配置。
+新发行使用 `@routilet/c-observer`；原 `@annouimo/c-observer` 预览包保留历史版本。新包首次公开发布需由维护者手动使用已验收 tarball 完成，然后配置新包的 Trusted Publishing。旧包不撤回。
+
+包名 @routilet/c-observer。npm 侧配置 GitHub Actions：Organization/user Routilet；Repository c-observer；Workflow filename publish-npm.yml；Environment 留空；允许 npm publish（仅 stage 权限不能运行此工作流）。不创建 token。新授权必须在两天内首次成功发布，建议首发可用且 workflow 已在 main 时再配置。
 
 publish-npm.yml 支持 DRY_RUN（默认，private:true，不联网发行）、BOOTSTRAP_PACK（main 手动触发，生成可供维护者首次本地 npm publish 的公开预览 tarball）、PUBLISH_NEXT（main 手动触发，使用 OIDC 发布 next）。项目采用 MIT License；后两项必须在 main 上运行并检查 LICENSE。当前只接受明确预发行版本，不提供 latest 发布模式；首版 LLDB 验收后另行开放 latest 正式发行；不以 GDB/Windows 为前置条件。首次创建可通过维护者登录 npm，下载 BOOTSTRAP_PACK 的 tarball、校验 SHA256SUMS，然后 npm publish ./<tarball>.tgz --access public --tag next（交互 2FA）。也可使用 npm stage publish 后审核。待包创建后配置 Trusted Publisher，再用新版本触发 PUBLISH_NEXT 验证授权，避免重复发布同版本。预览包不写入正式 Companion 依赖。
 
@@ -27,4 +29,4 @@ PR #1（同仓库 feat/tui）的一次性 BOOTSTRAP_PR 模式生成 0.1.0-beta.1
 
 ## 第二次预览
 
-首发 beta.1 的固定历史产物：https://github.com/Annouimo/c-observer/actions/runs/45738301452/artifacts/15079363315 。合并映射身份修复后，PR #1 的手动发布产物改为 0.1.0-beta.2，避免不同内容重用 beta.1 版本。自动 OIDC 发布仍限定 main；待维护者完成 npm 首次发布及授权后再走自动流程。稳定版不在本轮发布范围。
+首发 beta.1 的固定历史产物：https://github.com/Routilet/c-observer/actions/runs/45738301452/artifacts/15079363315 。合并映射身份修复后，PR #1 的手动发布产物改为 0.1.0-beta.2，避免不同内容重用 beta.1 版本。自动 OIDC 发布仍限定 main；待维护者完成 npm 首次发布及授权后再走自动流程。稳定版不在本轮发布范围。

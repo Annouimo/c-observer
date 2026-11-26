@@ -24,7 +24,7 @@ jobs:
           set -eu
           file="$(find "$RUNNER_TEMP/observer-dist" -maxdepth 1 -name '*.tgz' -print -quit)"
           npm install --prefix "$RUNNER_TEMP/observer-install" --no-save --ignore-scripts --no-audit --no-fund "$file"
-          binary="$RUNNER_TEMP/observer-install/node_modules/@annouimo/c-observer/bin/linux-x64/c-observer"
+          binary="$RUNNER_TEMP/observer-install/node_modules/@routilet/c-observer/bin/linux-x64/c-observer"
           test -x "$binary"
           test "$("$binary" --version)" = "0.1.0-dev.1"
           "$binary" --capabilities
