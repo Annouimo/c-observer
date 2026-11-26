@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Annouimo/c-observer/internal/observer"
+	"github.com/Routilet/c-observer/internal/observer"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )

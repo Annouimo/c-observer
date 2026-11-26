@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/Annouimo/c-observer/internal/observer"
+	"github.com/Routilet/c-observer/internal/observer"
 )
 
 // Only direct declarations in the entry main's outer block have a proven

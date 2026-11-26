@@ -8,9 +8,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Annouimo/c-observer/internal/engine"
-	"github.com/Annouimo/c-observer/internal/observer"
-	"github.com/Annouimo/c-observer/internal/tui"
+	"github.com/Routilet/c-observer/internal/engine"
+	"github.com/Routilet/c-observer/internal/observer"
+	"github.com/Routilet/c-observer/internal/tui"
 	tea "github.com/charmbracelet/bubbletea"
 )
 

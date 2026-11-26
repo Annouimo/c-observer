@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Annouimo/c-observer/internal/observer"
+	"github.com/Routilet/c-observer/internal/observer"
 )
 
 type stackFrame struct {

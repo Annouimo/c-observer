@@ -12,9 +12,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/Annouimo/c-observer/internal/engine"
-	"github.com/Annouimo/c-observer/internal/observer"
-	"github.com/Annouimo/c-observer/internal/session"
+	"github.com/Routilet/c-observer/internal/engine"
+	"github.com/Routilet/c-observer/internal/observer"
+	"github.com/Routilet/c-observer/internal/session"
 )
 
 func TestRealEngineReplay(t *testing.T) {
