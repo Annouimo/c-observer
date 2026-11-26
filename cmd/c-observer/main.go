@@ -24,11 +24,12 @@ func run(args []string, out io.Writer) error {
 	versionOnly := flags.Bool("version",false,"print version")
 	capabilities := flags.Bool("capabilities",false,"print machine-readable protocol capabilities")
 	sessionPath := flags.String("session","","launch from a versioned session JSON file")
+	replayPath := flags.String("replay","","replay an exported observation record without a compiler or debugger")
 	backend := flags.String("backend","auto","auto, gdb or lldb")
 	compiler := flags.String("compiler","","compiler path or name")
 	debugger := flags.String("debugger","","debugger path or name")
 	flags.Usage = func() {
-		fmt.Fprintln(out,"Usage: c-observer [source.c] | c-observer --session session.json")
+		fmt.Fprintln(out,"Usage: c-observer [source.c] | c-observer --session session.json | c-observer --replay record.json")
 		flags.PrintDefaults()
 	}
 	if err:=flags.Parse(args);err!=nil {
@@ -38,7 +39,16 @@ func run(args []string, out io.Writer) error {
 	if *versionOnly {fmt.Fprintln(out,version);return nil}
 	if *capabilities {
 		backends:=supportedBackends(runtime.GOOS)
-		return json.NewEncoder(out).Encode(map[string]any{"version":version,"sessionSchemaVersions":[]int{session.Version},"platform":runtime.GOOS,"arch":runtime.GOARCH,"backends":backends,"sessionFeatures":[]string{"backend","comparison"}})
+		return json.NewEncoder(out).Encode(map[string]any{"version":version,"sessionSchemaVersions":[]int{session.Version},"recordSchemaVersions":[]int{tui.RecordVersion},"platform":runtime.GOOS,"arch":runtime.GOARCH,"backends":backends,"sessionFeatures":[]string{"backend","comparison"}})
+	}
+	if *replayPath!="" {
+		if *sessionPath!="" || flags.NArg()!=0 || *compiler!="" || *debugger!="" || *backend!="auto" {
+			return fmt.Errorf("--replay cannot be combined with a session, source or tool overrides")
+		}
+		model,err:=loadReplay(*replayPath)
+		if err!=nil {return err}
+		_,err=tea.NewProgram(model,tea.WithAltScreen()).Run()
+		return err
 	}
 	if len(supportedBackends(runtime.GOOS))==0 {return fmt.Errorf("unsupported platform: %s",runtime.GOOS)}
 	if *backend!="auto" && *backend!="gdb" && *backend!="lldb" {return fmt.Errorf("invalid backend: %s",*backend)}
@@ -61,8 +71,14 @@ func run(args []string, out io.Writer) error {
 		}
 		model=tui.NewSetup(selectedEngine{},cfg)
 	}
-	_,err:=tea.NewProgram(model,tea.WithAltScreen()).Run()
+	_,err:=tea.NewProgram(model.WithVersion(version),tea.WithAltScreen()).Run()
 	return err
+}
+
+func loadReplay(path string) (tui.Model,error) {
+	record,err:=tui.LoadRecord(path)
+	if err!=nil {return tui.Model{},err}
+	return tui.NewRecorded(record)
 }
 
 func main() {
