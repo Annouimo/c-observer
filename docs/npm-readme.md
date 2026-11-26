@@ -15,6 +15,7 @@ Companion 根据 manifest.json 选择本机程序并使用版本化会话协议�
 ```sh
 c-observer
 c-observer main.c
+c-observer --replay observation.json
 c-observer --version
 c-observer --capabilities
 ```
@@ -24,3 +25,7 @@ c-observer --capabilities
 源码与协议：https://github.com/Routilet/c-observer
 
 MIT License；第三方许可证及声明见 THIRD_PARTY_NOTICES.txt。考试中使用须符合课程规定。
+
+## 观察记录（0.1.1）
+
+现场观察完成后，在数据页或结果页按 **W**，确认后将完整 JSON 记录保存到用户主目录。界面显示文件位置；记录含源码、输入输出、快照及本地路径，分享前检查敏感内容。使用 `c-observer --replay <文件路径>` 离线打开记录，不需要编译器或调试器。Windows 使用对应的 c-observer.exe。R 在离线模式只重置回放，无法重新采集。参见 [记录格式](https://github.com/Routilet/c-observer/blob/main/docs/record-format.md)。
