@@ -16,7 +16,7 @@ import (
 func testRecord() ObservationRecord {
 	expected := []byte{}
 	run := observer.RunResult{
-		Reason: observer.Exited,
+		Reason:  observer.Exited,
 		Session: observer.Session{Backend: "gdb-mi", Sources: []observer.SourceFile{{Path: "missing/main.c", Text: "int main(void) { return 0; }\n"}}},
 		Snapshots: []observer.Snapshot{
 			{ID: 0, Location: observer.SourceLocation{File: "missing/main.c", Line: 1}, OutputOffsets: observer.OutputOffsets{StdoutBytes: 1}},
