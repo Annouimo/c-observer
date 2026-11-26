@@ -135,7 +135,7 @@ type VariableRow struct {
 	Key, Name, Type, Value, Detail, Before string
 	Depth                                  int
 	Changed, Expandable, Collapsed         bool
-	Reliable                               bool
+	Reliable, Comparable                   bool
 	Path                                   string
 	Parent                                 string
 	Raw                                    observer.Variable
@@ -207,9 +207,13 @@ func (r Replay) Rows(collapsed map[string]bool) []VariableRow {
 				}
 				row.Detail += "不完整"
 			}
-			row.Changed = match && v.Status == observer.Observed && o.Status == observer.Observed &&
-				!v.ValueTruncated && !o.ValueTruncated && len(v.Children) == 0 && len(o.Children) == 0 &&
-				(v.Kind == observer.Scalar || v.Kind == observer.String || v.Kind == observer.Pointer) && v.Value != o.Value
+			// String display values are independent of captured character children.
+			// ValueTruncated describes the string value; ChildrenComplete describes the tree.
+			row.Comparable = match && v.Status == observer.Observed && o.Status == observer.Observed &&
+				!v.ValueTruncated && !o.ValueTruncated &&
+				(v.Kind == observer.String || (len(v.Children) == 0 && len(o.Children) == 0 &&
+					(v.Kind == observer.Scalar || v.Kind == observer.Pointer)))
+			row.Changed = row.Comparable && v.Value != o.Value
 			if row.Changed {
 				row.Before = SafeText(o.Value, false)
 			}
