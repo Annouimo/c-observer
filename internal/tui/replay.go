@@ -216,6 +216,9 @@ func (r Replay) Rows(collapsed map[string]bool) []VariableRow {
 			row.Changed = row.Comparable && v.Value != o.Value
 			if row.Changed {
 				row.Before = SafeText(o.Value, false)
+				if v.Kind == observer.String && o.Value == "" {
+					row.Before = "\"\""
+				}
 			}
 			row.Expandable = len(v.Children) > 0
 			row.Collapsed = collapsed[key]
