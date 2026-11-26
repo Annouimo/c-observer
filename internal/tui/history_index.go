@@ -87,7 +87,6 @@ func BuildHistoryIndex(run observer.RunResult) *HistoryIndex {
 			byKey[v.Key] = v
 		}
 		changedLabels := map[string][]string{}
-		var allLabels []string
 		anyChange := false
 		for _, v := range rows {
 			if v.Raw.Kind == observer.Array && v.Reliable {
@@ -98,9 +97,6 @@ func BuildHistoryIndex(run observer.RunResult) *HistoryIndex {
 			if v.Changed {
 				anyChange = true
 				label := capLabel(SafeText(v.Path, false) + ": " + v.Before + " → " + v.Value)
-				if len(allLabels) < 6 {
-					allLabels = append(allLabels, label)
-				}
 				for parent := v.Parent; parent != ""; {
 					a, ok := byKey[parent]
 					if !ok {
@@ -157,6 +153,9 @@ func BuildHistoryIndex(run observer.RunResult) *HistoryIndex {
 			}
 			seen, ok := lastSeen[v.Key]
 			entry := HistoryEntry{Position: pos, Location: s.Location}
+			if step := r.Step(); step.HasInterval() {
+				entry.Location = step.Origin
+			}
 			switch {
 			case !ok || seen != pos-1:
 				entry.Text = "观测起点 · " + cellFor(v).Text
@@ -178,11 +177,7 @@ func BuildHistoryIndex(run observer.RunResult) *HistoryIndex {
 		}
 		if s.Location.File != "" && s.Location.Line > 0 {
 			key := lineKey{s.Location.File, s.Location.Line}
-			label := "暂停于此行"
-			if len(allLabels) > 0 {
-				label += " · " + strings.Join(allLabels, "; ")
-			}
-			idx.Lines[key] = append(idx.Lines[key], HistoryEntry{Position: pos, Location: s.Location, Text: capLabel(label), Changed: anyChange})
+			idx.Lines[key] = append(idx.Lines[key], HistoryEntry{Position: pos, Location: s.Location, Text: "暂停于此行（不代表此行已执行）"})
 		}
 	}
 	for key, ev := range evidence {
