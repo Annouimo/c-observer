@@ -3,7 +3,7 @@ package engine
 import (
 	"testing"
 
-	"github.com/Annouimo/c-observer/internal/observer"
+	"github.com/Routilet/c-observer/internal/observer"
 )
 
 func TestArrayRangeSelection(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/Annouimo/c-observer/internal/observer"
+	"github.com/Routilet/c-observer/internal/observer"
 )
 
 func TestArrayRecordTableAndHistory(t *testing.T) {

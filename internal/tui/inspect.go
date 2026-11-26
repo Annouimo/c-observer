@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/Annouimo/c-observer/internal/observer"
+	"github.com/Routilet/c-observer/internal/observer"
 )
 
 type Cell struct {

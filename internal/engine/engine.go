@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Annouimo/c-observer/internal/observer"
+	"github.com/Routilet/c-observer/internal/observer"
 )
 
 const cleanupTimeout = 2 * time.Second

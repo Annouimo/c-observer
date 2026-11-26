@@ -11,10 +11,10 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/Annouimo/c-observer/internal/engine"
-	"github.com/Annouimo/c-observer/internal/observer"
-	"github.com/Annouimo/c-observer/internal/session"
-	"github.com/Annouimo/c-observer/internal/tui"
+	"github.com/Routilet/c-observer/internal/engine"
+	"github.com/Routilet/c-observer/internal/observer"
+	"github.com/Routilet/c-observer/internal/session"
+	"github.com/Routilet/c-observer/internal/tui"
 )
 
 var version = "dev"

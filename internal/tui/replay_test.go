@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/Annouimo/c-observer/internal/observer"
+	"github.com/Routilet/c-observer/internal/observer"
 )
 
 func fixture(t *testing.T, name string) Fixture {
