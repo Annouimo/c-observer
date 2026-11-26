@@ -164,7 +164,7 @@ func (m *Model) setFilter(i int) {
 
 func (m Model) workspaceMode() bool {
 	switch m.mode {
-	case "filter", "stack", "jump", "help", "object", "display-range":
+	case "filter", "stack", "jump", "help", "object", "display-range", "record-confirm", "record-result":
 		return true
 	}
 	return false
@@ -198,6 +198,18 @@ func (m *Model) handleWorkspace(msg tea.KeyMsg) tea.Cmd {
 	}
 	if k == "ctrl+c" || k == "q" {
 		return tea.Quit
+	}
+	if m.mode == "record-confirm" {
+		if k == "enter" {
+			m.exportRecord()
+		}
+		return nil
+	}
+	if m.mode == "record-result" {
+		if k == "enter" {
+			m.mode = ""
+		}
+		return nil
 	}
 	if m.mode == "help" {
 		if k == "enter" || k == "?" {
@@ -395,9 +407,21 @@ func isDigits(s string) bool {
 }
 
 func (m Model) workspaceOverlay(w, h int) string {
-	titles := map[string]string{"filter": "导航模式", "stack": "选择调用栈帧", "jump": "跳转快照", "help": "操作帮助", "object": "对象操作", "display-range": "展示范围"}
+	titles := map[string]string{"filter": "导航模式", "stack": "选择调用栈帧", "jump": "跳转快照", "help": "操作帮助", "object": "对象操作", "display-range": "展示范围", "record-confirm": "导出观察记录", "record-result": "导出结果"}
 	lines := []string{accent.Render(clip("C Observer / "+titles[m.mode], w)), ""}
 	switch m.mode {
+	case "record-confirm":
+		lines = append(lines, "记录将保存为用户主目录中的独立 JSON 文件。", "包含源码、输入输出、原始快照和本地路径。", "分享前请确认其中没有敏感信息。", "", "Enter 确认导出  Esc 取消")
+		return fixed(lines, w, h)
+	case "record-result":
+		if m.notice != "" {
+			lines = append(lines, strings.Split(runewidth.Wrap(m.notice, w), "\n")...)
+		} else {
+			lines = append(lines, "已保存完整观察记录：")
+			lines = append(lines, strings.Split(runewidth.Wrap(SafeText(m.exportPath, false), w), "\n")...)
+		}
+		lines = append(lines, "", "Enter / Esc 返回")
+		return fixed(lines, w, h)
 	case "help":
 		for _, line := range []string{
 			"←/→ 回放    Home/End 首尾    J 指定快照",
@@ -407,7 +431,8 @@ func (m Model) workspaceOverlay(w, h int) string {
 			"S 调用栈    O 对象菜单    详情内 T 全部成员",
 			"D 数据表    V 全部/自动范围    A 采集范围",
 			"[/] 源码横向移动 / 数据表翻列",
-			"R 重跑    E 修改独立启动配置",
+			"R 重跑 / 离线重置    E 修改独立启动配置",
+			"W 导出现场观察记录（需确认）",
 			"值变化来自相邻已采集快照，不等于完整赋值日志。",
 		} {
 			lines = append(lines, clip(line, w))
