@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -65,6 +66,33 @@ int main(void) {
 	m := NewLive(backend, cfg)
 	next, _ := m.Update(runDone{result})
 	m = next.(Model)
+	if m.record == nil {
+		t.Fatal("live result has no observation record")
+	}
+	path, err := SaveRecord(t.TempDir(), *m.record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := LoadRecord(path)
+	if err != nil || !reflect.DeepEqual(record.Run, result) {
+		t.Fatalf("real record round trip: %v", err)
+	}
+	offline, err := NewRecorded(record)
+	if err != nil || offline.Init() != nil || offline.engine != nil {
+		t.Fatalf("offline replay: %v", err)
+	}
+	for pos := range result.Snapshots {
+		m.seek(pos)
+		offline.seek(pos)
+		if !reflect.DeepEqual(m.replay.Rows(nil), offline.replay.Rows(nil)) {
+			t.Fatalf("offline rows differ at %d", pos)
+		}
+		a, b := m.replay.Output()
+		x, y := offline.replay.Output()
+		if string(a) != string(x) || string(b) != string(y) {
+			t.Fatalf("offline output differs at %d", pos)
+		}
+	}
 	if m.err != "" || m.replay.Index == nil || m.demo {
 		t.Fatal("real result did not enter replay")
 	}
