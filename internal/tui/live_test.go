@@ -132,7 +132,8 @@ func TestCompanionSessionReplay(t *testing.T) {
 	backend, compiler, debugger, _ := realFrontendEngine()
 	cfg.Compiler, cfg.Debugger = compiler, debugger
 	result := backend.Run(context.Background(), cfg)
-	if result.Reason != observer.Exited || string(result.Output.Stdout) != string(*cfg.ExpectedStdout) || result.CleanupError != "" {
+	equal, _ := sampleEqual(*cfg.ExpectedStdout, result.Output.Stdout, "exact")
+	if result.Reason != observer.Exited || !equal || result.CleanupError != "" {
 		t.Fatalf("mapped run: reason=%s message=%s diagnostics=%+v stdout=%q cleanup=%s", result.Reason, result.Message, result.Diagnostics, result.Output.Stdout, result.CleanupError)
 	}
 	m := NewLive(backend, cfg)
@@ -180,7 +181,7 @@ func TestCompanionSessionReplay(t *testing.T) {
 		t.Fatalf("mapped adaptive focus: array=%v reliable=%v focus=%v change=%v", seenArray, seenReliable, seenFocus, seenChange)
 	}
 	m.seek(len(result.Snapshots))
-	if !strings.Contains(m.View(), "输出一致") {
+	if !strings.Contains(m.View(), "输出一致") && !strings.Contains(m.View(), "按样例规则：一致") {
 		t.Fatal("mapped final output comparison missing")
 	}
 	t.Logf("Companion-generated mapped session replayed %d snapshots; verified reliable identity, actual changes and focus 0..4", len(result.Snapshots))
