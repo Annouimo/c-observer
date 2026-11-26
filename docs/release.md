@@ -20,3 +20,7 @@ publish-npm.yml 支持 DRY_RUN（默认，private:true，不联网发行）、BO
 0.1.0-beta.1 使用 LLDB，经过真实终端、真实程序、Companion 装配源码与旧启动器兼容性检查后再发布。0.1.0 稳定版同样不等待 Windows/GDB。保持已开发的 GDB 分支及后续计划，不合入首版入口或标记为受支持。Companion 依赖为可选，Windows 用户仍可正常使用其原有功能。不得仅凭交叉构建或 --capabilities 判断调试器可用。
 
 许可证检查依据实际发行目标的 go list -deps 依赖集合，不把仅用于未发行平台或测试的模块混入二进制分发声明；若实际依赖缺少上游许可证，仍停止打包并审查。新增平台必须自动纳入检查。
+
+## 首次公开预览包（维护者确认）
+
+PR #1（同仓库 feat/tui）的一次性 BOOTSTRAP_PR 模式生成 0.1.0-beta.1 的可公开发布 tarball；执行完整包检查和三平台原生安装检查，保留 SHA256SUMS。此模式不拥有 id-token 写权限、不调用 npm publish、不合入 main。维护者仅在该 CI 成功后下载并手动发布 `next`，用于最终审核。后续自动发布仍限定 main，待工作流合入后配置 Trusted Publisher 并使用不同版本号。不要重新发布已占用的 beta.1 版本；后续 PR 构建产物不是 registry 中已发行版本。
