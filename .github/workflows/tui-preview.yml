@@ -17,7 +17,10 @@ jobs:
           go-version: '1.23.x'
           cache: false
       - run: go mod tidy && git diff --exit-code -- go.mod go.sum
-      - run: test -z "$(gofmt -l internal/tui cmd/c-observer-preview)"
+      - name: Check frontend formatting
+        run: |
+          gofmt -d internal/tui cmd/c-observer-preview
+          test -z "$(gofmt -l internal/tui cmd/c-observer-preview)"
       - run: go test ./...
       - run: go vet ./...
       - run: go build ./cmd/c-observer-preview
