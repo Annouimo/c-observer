@@ -36,3 +36,9 @@ PR #1（同仓库 feat/tui）的一次性 BOOTSTRAP_PR 模式生成 0.1.0-beta.1
 新 scope 首次迁移发行已由维护者确认完成，移除 BOOTSTRAP_PR / BOOTSTRAP_PACK，仅保留 DRY_RUN 与 main 人工触发 PUBLISH_NEXT。新增 win32-x64 构建、zip、清单和 Windows 原生安装测试；GDB 真机引擎已有记录，但正式入口/TUI/分发仍需联合验收。Windows 仅 x64，macOS LLDB，Linux 双后端。旧段落中的 LLDB-only、旧首发步骤为历史记录，不再作为计划。正式 latest 和独立 Release 尚待验收后启用。
 
 Windows 新增实际依赖 go-localereader v0.0.1：固定版本上游 README 明确声明 MIT 并署名 Yasuhiro Matsumoto，但无独立 LICENSE。收集器仅为此精确版本校验原 README、保留原声明并补充标准 MIT 条款，不伪造上游许可文件或年份；其他缺失许可证仍阻止构建。正式发行前维护者审核此处理。
+
+## 2026-11-26：跨平台候选验收与下一次 next
+
+修复提交 2b9e6a3 已合入 feat/tui。真实调试器 CI 45758778049 全部通过（Windows GDB 16 快照、Linux GDB 17 快照、Linux LLDB 装配源码回归），四平台 npm 原生安装 CI 45758778175 通过。英文 Windows 的不可表示路径明确拒绝；不宣称所有 Windows Unicode 路径可用。新 scope npm dist-tags 已通过 Companion CI 45758886077 确认为 latest/next=0.1.0-beta.2；建议下次 next 为 0.1.0-beta.3，但须核对完整已发布版本列表，不能覆盖已发布版本。正式 latest 不在此轮预览中修改。
+
+预览发行仍走既有 main 人工触发 PUBLISH_NEXT 流程，确认 CI、许可及合并审批后由维护者触发，不为 PR 添加发布权限。Companion 预览精确依赖实际发布的 Observer 版本；不要把本地私有 tarball 误当已发布包。
