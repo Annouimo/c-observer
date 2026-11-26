@@ -22,7 +22,13 @@ func (c *capture) location(path string, line int, function string) observer.Sour
 	if path == "" {
 		return loc
 	}
-	for _, candidate := range []string{path, absolute(c.dir, path)} {
+	candidates := []string{path, absolute(c.dir, path)}
+	// DWARF/DAP may report an absolute path for a relative #line origin.
+	// Resolve only against the working directory; never guess by basename.
+	if relative, err := filepath.Rel(c.dir, absolute(c.dir, path)); err == nil {
+		candidates = append(candidates, relative, filepath.ToSlash(relative))
+	}
+	for _, candidate := range candidates {
 		if target, ok := c.config.SourceMap[candidate]; ok {
 			target = absolute(c.dir, target)
 			if _, visible := c.files[target]; visible {

@@ -22,3 +22,5 @@ Companion 从同一次装配生成观察源码与冻结的用户源码，通过 
 
 ### 后端选择（下一版）
 Session v1 新增可选 `backend`：`auto`（或省略）、`gdb`、`lldb`。仅新版本支持该字段，旧程序严格拒绝未知字段。CLI `--backend` 仅独立运行使用；Session 自带配置。Windows x64 使用 GDB，macOS LLDB，Linux 自动按指定工具或 PATH 选择，显式选择优先。不扫描 IDE、不自动安装工具链。`--capabilities` 仅报告构建支持，非本机调试器自检。Windows 优先 GCC 同目录 GDB；实际可用性由运行检查决定。尚待跨平台联调与发行验收。
+
+映射路径：调试器可能将相对 #line 路径报告为工作目录下绝对路径；引擎按工作目录匹配精确相对键，不按 basename 猜测。真实 LLDB 非零退出 Session 回归必须通过。
