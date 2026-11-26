@@ -67,7 +67,30 @@ jobs:
           test -x "$compiler" && test -x "$debugger"
           echo "C_OBSERVER_TEST_CLANG=$compiler" >> "$GITHUB_ENV"
           echo "C_OBSERVER_TEST_LLDB=$debugger" >> "$GITHUB_ENV"
+          echo "$(dirname "$debugger")" >> "$GITHUB_PATH"
       - run: go mod tidy
       - run: C_OBSERVER_REAL_DEBUGGER=1 go test -v -run '^TestRealEngineReplay
  ./internal/tui
       - run: C_OBSERVER_REAL_DEBUGGER=1 go test -v ./internal/engine
+      - name: Build actual Observer CLI
+        run: go build -o "$RUNNER_TEMP/c-observer" ./cmd/c-observer
+      - name: Check out reviewed Companion integration
+        uses: actions/checkout@v4
+        with:
+          repository: Annouimo/accoding-companion
+          ref: 01dc8011a52ef3b2e5e856ca97324f7026332a81
+          path: companion-integration
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Generate a real assembled session from Companion
+        working-directory: companion-integration
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          ACCODING_OBSERVER_PATH="$RUNNER_TEMP/c-observer" ACCODING_CC="$C_OBSERVER_TEST_CLANG" node --import tsx tests/standalone/observer-session-fixture.ts "$RUNNER_TEMP/course-integration" "$RUNNER_TEMP/session-path"
+      - name: Replay the Companion session with LLDB
+        run: |
+          session="$(cat "$RUNNER_TEMP/session-path")"
+          trap 'case "$(basename "$(dirname "$session")")" in accoding-observer-*) rm -rf -- "$(dirname "$session")";; esac' EXIT
+          C_OBSERVER_COMPANION_SESSION="$session" go test -count=1 -v -run '^TestCompanionSessionReplay$' ./internal/tui
