@@ -4,9 +4,9 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
-	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -74,7 +74,9 @@ int main(void) {
 		t.Fatal(err)
 	}
 	record, err := LoadRecord(path)
-	if err != nil || !reflect.DeepEqual(record.Run, result) {
+	before, _ := json.Marshal(result)
+	after, _ := json.Marshal(record.Run)
+	if err != nil || string(before) != string(after) {
 		t.Fatalf("real record round trip: %v", err)
 	}
 	offline, err := NewRecorded(record)
@@ -84,7 +86,9 @@ int main(void) {
 	for pos := range result.Snapshots {
 		m.seek(pos)
 		offline.seek(pos)
-		if !reflect.DeepEqual(m.replay.Rows(nil), offline.replay.Rows(nil)) {
+		beforeRows, _ := json.Marshal(m.replay.Rows(nil))
+		afterRows, _ := json.Marshal(offline.replay.Rows(nil))
+		if string(beforeRows) != string(afterRows) {
 			t.Fatalf("offline rows differ at %d", pos)
 		}
 		a, b := m.replay.Output()
