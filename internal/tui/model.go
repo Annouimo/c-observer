@@ -49,7 +49,7 @@ type runDone struct{ result observer.RunResult }
 type clockTick time.Time
 
 func NewPreview(f Fixture) Model {
-	m := Model{replay: NewReplay(f.Run), demo: true, width: 100, height: 30, consoleTab: 1, collapsed: map[string]bool{}}
+	m := Model{replay: NewReplay(f.Run), demo: true, width: 100, height: 30, focus: 1, consoleTab: 1, collapsed: map[string]bool{}}
 	m.config.Stdin = []byte(f.Stdin)
 	if f.ExpectedStdout != nil {
 		b := []byte(*f.ExpectedStdout)
@@ -60,7 +60,7 @@ func NewPreview(f Fixture) Model {
 
 // NewLive is the integration boundary; the engine is injected by the caller.
 func NewLive(engine observer.Engine, config observer.LaunchConfig) Model {
-	return Model{engine: engine, config: config, width: 100, height: 30, consoleTab: 1, collapsed: map[string]bool{}}
+	return Model{engine: engine, config: config, width: 100, height: 30, focus: 1, consoleTab: 1, collapsed: map[string]bool{}}
 }
 
 func (m Model) Init() tea.Cmd {
@@ -124,6 +124,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sourceScroll, m.varCursor, m.varScroll, m.consoleScroll = 0, 0, 0, 0
 		m.collapsed = map[string]bool{}
 		m.mode, m.notice = "", ""
+		m.focus, m.maximized = 1, false
 		if len(msg.result.Snapshots) == 0 {
 			m.consoleTab = 1
 		}
@@ -157,6 +158,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch k {
 		case "m":
 			m.maximized = !m.maximized
+		case "c":
+			m.focus, m.maximized = 0, false
+		case "i":
+			m.focus, m.maximized = 2, false
 		case "f":
 			m.mode = "filter"
 			m.menuCursor = 0
@@ -205,6 +210,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "esc":
 			if m.maximized {
 				m.maximized = false
+				break
+			}
+			if m.focus != 1 && !m.replay.End() {
+				m.focus = 1
 				break
 			}
 			return m, tea.Quit
@@ -558,10 +567,20 @@ func (m Model) View() string {
 		}
 		return m.inspector(w, h)
 	}
-	// Header/footer consume three rows. The console is kept compact on wide terminals.
+	// Source and console are explicit alternate views; the default is data-first.
 	mainH := h - 4
 	var body string
-	if w >= 86 && !m.maximized {
+	if !m.replay.End() && !m.maximized {
+		switch m.focus {
+		case 0:
+			body = m.source(w, mainH)
+		case 2:
+			body = m.console(w, mainH)
+		default:
+			context := m.executionContext(w)
+			body = strings.Join(context, "\n") + "\n" + m.dataFirstPanel(w, mainH-len(context))
+		}
+	} else if w >= 86 && !m.maximized {
 		consoleH := max(4, min(7, mainH/3))
 		if m.replay.End() && m.consoleTab == 4 {
 			consoleH = max(5, mainH*2/3)
@@ -612,13 +631,13 @@ func (m Model) View() string {
 		help = "Home/End 首尾  R 重置  Q 退出"
 	}
 	if m.focus == 1 && !m.replay.End() {
-		help = "Enter 详情  O 操作  H 历史  M 最大化  ? 帮助"
+		help = "D 详情  C 源码  I 输入输出  S 栈帧  ? 帮助"
 	}
 	if m.focus == 2 {
-		help = "Enter 切换输入输出  M 最大化  ? 帮助"
+		help = "Enter 切换输入输出  Esc 返回数据  ? 帮助"
 	}
 	if m.focus == 0 && !m.replay.End() {
-		help = "H 行历史  S 栈帧  M 最大化  F 筛选  ? 帮助"
+		help = "H 行历史  S 栈帧  Esc 返回数据  ? 帮助"
 	}
 	if m.standalone && m.focus == 0 {
 		help += "  E 修改配置"
@@ -626,5 +645,5 @@ func (m Model) View() string {
 	if m.notice != "" {
 		help = m.notice
 	}
-	return accent.Render(clip(title, w)) + "\n" + body + "\n" + muted.Render(clip(pos+"  ·  "+reasonLabel(m.replay.Run.Reason), w)) + "\n" + muted.Render(clip("←/→ 回放  ↑/↓ 选择  Tab 区域  F 筛选  J 跳转  R 重跑", w)) + "\n" + muted.Render(clip(help, w))
+	return accent.Render(clip(title, w)) + "\n" + body + "\n" + muted.Render(clip(pos+"  ·  "+reasonLabel(m.replay.Run.Reason), w)) + "\n" + muted.Render(clip("←/→ 回放  ↑/↓ 选择  Tab 视图  F 筛选  J 跳转  R 重跑", w)) + "\n" + muted.Render(clip(help, w))
 }
