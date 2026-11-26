@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 
@@ -11,8 +12,8 @@ import (
 )
 
 // Only direct declarations in the entry main's outer block have a proven
-// lifetime here. Clang supplies the lexical boundary; DAP supplies declaration
-// locations and a complete stack identifying the still-active entry call.
+// lifetime here. Clang supplies the lexical boundary and DAP supplies a
+// complete stack identifying the still-active entry call.
 type mainIdentity struct {
 	source string
 	lines  map[string]int
@@ -54,20 +55,19 @@ func inspectSource(ctx context.Context, compiler, dir, source, text string, args
 	configureProcess(cmd)
 	cmd.Cancel = func() error { return killProcessGroup(cmd) }
 	cmd.WaitDelay = cleanupTimeout
-	out := &cappedBuffer{limit: 8 << 20}
-	cmd.Stdout = out
-	if err := cmd.Run(); err != nil {
+	stdout, err := cmd.StdoutPipe()
+	if err != nil || cmd.Start() != nil {
 		return sourceIndex{}
 	}
-	var unit astNode
-	if json.Unmarshal([]byte(out.String()), &unit) != nil {
-		return sourceIndex{}
-	}
+	// Ignore headers and preset definitions as each top-level declaration is
+	// decoded. An expanded C Exam Kit preset can exceed 8 MiB of AST JSON.
+	input := &io.LimitedReader{R: stdout, N: 64 << 20}
+	decoder := json.NewDecoder(input)
 	index := sourceIndex{globals: make(map[declarationKey]observer.VariableScope)}
-	for _, root := range unit.Inner {
+	parseErr := readASTDeclarations(decoder, func(root astNode) {
 		file, line := root.sourceLine(source, text, origins)
 		if line == 0 {
-			continue
+			return
 		}
 		if root.Kind == "VarDecl" {
 			switch root.StorageClass {
@@ -76,10 +76,10 @@ func inspectSource(ctx context.Context, compiler, dir, source, text string, args
 			case "":
 				index.addGlobal(declarationKey{root.Name, file, line}, observer.GlobalScope)
 			}
-			continue
+			return
 		}
 		if root.Kind != "FunctionDecl" {
-			continue
+			return
 		}
 		for _, body := range root.Inner {
 			if body.Kind == "CompoundStmt" {
@@ -89,7 +89,7 @@ func inspectSource(ctx context.Context, compiler, dir, source, text string, args
 			}
 		}
 		if root.Name != "main" {
-			continue
+			return
 		}
 		for _, body := range root.Inner {
 			if body.Kind != "CompoundStmt" {
@@ -124,8 +124,65 @@ func inspectSource(ctx context.Context, compiler, dir, source, text string, args
 			}
 			index.mainLines, index.mainSource = lines, file
 		}
+	})
+	_ = stdout.Close()
+	if cmd.Wait() != nil || parseErr != nil || input.N == 0 {
+		return sourceIndex{}
 	}
 	return index
+}
+
+// Decode the single translation unit one declaration at a time, without
+// retaining AST nodes from system headers for the remainder of the run.
+func readASTDeclarations(decoder *json.Decoder, visit func(astNode)) error {
+	expect := func(want json.Token) error {
+		token, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		if token != want {
+			return fmt.Errorf("expected AST token %v", want)
+		}
+		return nil
+	}
+	if err := expect(json.Delim('{')); err != nil {
+		return err
+	}
+	found := false
+	for decoder.More() {
+		key, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		if key != "inner" {
+			var ignored json.RawMessage
+			if err := decoder.Decode(&ignored); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := expect(json.Delim('[')); err != nil {
+			return err
+		}
+		for decoder.More() {
+			var declaration astNode
+			if err := decoder.Decode(&declaration); err != nil {
+				return err
+			}
+			visit(declaration)
+		}
+		if err := expect(json.Delim(']')); err != nil {
+			return err
+		}
+		found = true
+	}
+	if err := expect(json.Delim('}')); err != nil {
+		return err
+	}
+	if token, err := decoder.Token(); !found || token != nil || err != io.EOF {
+		return fmt.Errorf("incomplete or unexpected Clang AST output")
+	}
+	return nil
 }
 
 func (node astNode) sourceLine(source, text string, origins sourceOrigins) (string, int) {
@@ -188,6 +245,20 @@ func (m *mainIdentity) entryFrame(frames []stackFrame, first bool) int {
 		return -1
 	}
 	return -1
+}
+
+// inferDeclaration is limited to a unique ordinary local in the proven
+// entry frame. An explicit debugger declaration, even one that fails source
+// mapping, takes precedence. Neither the name alone nor a DAP reference proves
+// identity: the AST excludes shadowing and shorter lifetimes.
+func (m mainIdentity) inferDeclaration(raw dapVariable, stop observer.SourceLocation, count int) *observer.SourceLocation {
+	line := m.lines[raw.Name]
+	if raw.Extensions.Declaration != nil || count != 1 || line == 0 ||
+		stop.File != m.source || stop.Line <= line ||
+		(raw.EvaluateName != "" && raw.EvaluateName != raw.Name) {
+		return nil
+	}
+	return &observer.SourceLocation{File: m.source, Line: line}
 }
 
 func (m mainIdentity) mark(v *observer.Variable, name string) {
