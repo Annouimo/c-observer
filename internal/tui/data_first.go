@@ -389,7 +389,12 @@ func (m Model) dataFirstPanel(w, h int) string {
 	for i, row := range roots {
 		blocks[i] = m.makeBlock(row, all, w, i == m.varCursor)
 	}
-	budget := max(1, h-2)
+	budget := max(1, h-1)
+	current := m.replay.Current()
+	if len(current.Globals) > 0 || m.replay.Frame > 0 || !current.GlobalsComplete && m.replay.Run.Session.Capabilities.Globals ||
+		m.replay.Frame < len(current.Frames) && !current.Frames[m.replay.Frame].VariablesComplete {
+		budget = max(1, budget-1)
+	}
 	var view []observationShelf
 	var hiddenColumns, offscreen bool
 	bestRoots, bestCells := -1, -1
@@ -417,6 +422,11 @@ func (m Model) dataFirstPanel(w, h int) string {
 				for _, g := range b.groups {
 					extra, hidden := g.render(width)
 					horizontal = horizontal || hidden
+					if len(b.groups) != 1 || g.sequence && g.widths[1] <= 11 {
+						for i := range extra {
+							extra[i].priority = false
+						}
+					}
 					lines = append(lines, extra...)
 				}
 				shelf.lines = append(shelf.lines, lines)
@@ -441,7 +451,7 @@ func (m Model) dataFirstPanel(w, h int) string {
 			break
 		}
 	}
-	label := "数据"
+	label := ""
 	if len(m.replay.Current().Globals) > 0 {
 		label += " · ⁺ 全局/静态"
 	}
@@ -454,14 +464,20 @@ func (m Model) dataFirstPanel(w, h int) string {
 	if frame := m.replay.Frame; frame < len(m.replay.Current().Frames) && !m.replay.Current().Frames[frame].VariablesComplete {
 		label += " · 部分局部"
 	}
-	lines := []string{muted.Render(clip(label, w))}
+	var lines []string
+	if label != "" {
+		lines = append(lines, muted.Render(clip(strings.TrimPrefix(label, " · "), w)))
+	}
 	hidden := hiddenColumns || offscreen
 	for _, s := range view {
 		hidden = hidden || s.height < s.fullHeight
+		visible := make([][]previewLine, len(s.lines))
+		for j, block := range s.lines {
+			visible[j] = visiblePreview(block, s.height)
+		}
 		for i := 0; i < s.height; i++ {
 			var cells []string
-			for j, block := range s.lines {
-				block = visiblePreview(block, s.height)
+			for j, block := range visible {
 				line := ""
 				if i < len(block) {
 					line = block[i].text
@@ -560,9 +576,9 @@ func visiblePreview(lines []previewLine, height int) []previewLine {
 	keep := make([]bool, len(lines))
 	keep[0] = true
 	count := 1
-	// Keep the first table header when there is room for a value.
-	if height >= 3 && len(lines) > 1 && lines[1].cells == 0 {
-		keep[1] = true
+	// Keep all leading context (title, range, column headings).
+	for i := 1; i < len(lines) && lines[i].cells == 0 && count < height; i++ {
+		keep[i] = true
 		count++
 	}
 	for i, line := range lines {
