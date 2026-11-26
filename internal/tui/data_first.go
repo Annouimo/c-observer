@@ -489,21 +489,23 @@ func (m Model) dataFirstPanel(w, h int) string {
 			lines = append(lines, strings.Join(cells, "  "))
 		}
 	}
-	folded := false
+	folded, incomplete := false, false
 	for _, r := range roots {
-		hidden = hidden || aggregate(r) && !r.Raw.ChildrenComplete
+		incomplete = incomplete || aggregate(r) && !r.Raw.ChildrenComplete
 	}
 	for _, b := range blocks {
 		for _, g := range b.groups {
 			folded = folded || g.folded
 		}
 	}
-	if hidden || folded {
+	if hidden || folded || incomplete {
 		hint := "… Enter 查看更多"
+		if incomplete {
+			hint = "… 部分数据未记录 · Enter 详情"
+		}
 		if offscreen {
 			hint = "↑/↓ 查看其他变量"
 		}
-		
 		lines = append(lines, muted.Render(clip(hint, w)))
 	}
 	return fixed(lines, w, h)

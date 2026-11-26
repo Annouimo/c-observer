@@ -130,7 +130,7 @@ func BuildHistoryIndex(run observer.RunResult) *HistoryIndex {
 						ev = &arrayEvidence{}
 						evidence[a.Key] = ev
 					}
-					if child.Raw.Index == nil || !child.Reliable || !v.Reliable {
+					if child.Raw.Index == nil || !child.Reliable || !v.Reliable || v.Changed && !v.ReliableChange {
 						ev.unreliable = true
 					}
 					if child.Raw.Index != nil {
@@ -165,7 +165,9 @@ func BuildHistoryIndex(run observer.RunResult) *HistoryIndex {
 			}
 			switch {
 			case !ok || seen != pos-1:
-				entry.Text = "观测起点 · " + cellFor(v).Text
+				baseline := v
+				baseline.Changed = false
+				entry.Text = "观测起点 · " + cellFor(baseline).Text
 			case v.ReliableChange:
 				entry.Text = v.Before + " → " + v.Value
 				entry.Changed = true

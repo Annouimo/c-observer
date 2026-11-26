@@ -491,6 +491,9 @@ func (m Model) consoleView(tab, w, h, scroll int, focused bool) string {
 		return m.outputComparison(w, h)
 	}
 	labels := []string{"输入", "最终输出", "错误输出", "预期输出", "输出对照", "当前步骤已记录输出"}
+	if m.replay.Run.Reason != observer.Exited || m.replay.Run.Output.StdoutTruncated {
+		labels[1] = "已记录输出"
+	}
 	lines := []string{head(" "+labels[tab], focused, w)}
 	a := m.consoleLines(tab, w)
 	start := max(0, min(scroll, max(0, len(a)-1)))

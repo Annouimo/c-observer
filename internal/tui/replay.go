@@ -231,7 +231,7 @@ func (r Replay) Rows(collapsed map[string]bool) []VariableRow {
 				}
 			}
 			o, ok := oldByID[v.ID]
-			strict := reliable && v.ID != "" && v.IdentityReliable && ok && o.Kind == v.Kind && o.Type == v.Type
+			strict := reliable && v.ID != "" && v.IdentityReliable && ok && compatibleObservation(v, o)
 			match := strict
 			if !match {
 				k := correspondenceKey(v)

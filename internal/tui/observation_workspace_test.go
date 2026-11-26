@@ -78,10 +78,14 @@ func TestCompactWorkspaceStreamsAndMenu(t *testing.T) {
 	run.Snapshots[0].OutputOffsets.StdoutBytes = len("  first\n")
 	run.Snapshots[1].OutputOffsets.StdoutBytes = len(run.Output.Stdout)
 	m := NewPreview(Fixture{Synthetic: true, Stdin: "  2\n1 2\n", Run: run})
-	m.seek(1)
+	m.seek(0)
 	if got := strings.Join(m.outputPreview(30, 3), "\n"); !strings.Contains(got, "最终输出") || !strings.Contains(got, "  second") {
 		t.Fatalf("final stdout: %q", got)
 	}
+	if got := m.consoleTextFor(5); !strings.Contains(got, "first") || strings.Contains(got, "second") {
+		t.Fatalf("captured prefix: %q", got)
+	}
+	m.seek(1)
 	for _, size := range [][2]int{{45, 14}, {60, 20}, {80, 24}, {120, 30}, {160, 40}} {
 		m.width, m.height = size[0], size[1]
 		view := m.View()
