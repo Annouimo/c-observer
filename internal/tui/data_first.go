@@ -58,9 +58,11 @@ func cellWidth(text string) int    { return runewidth.StringWidth(text) }
 
 func rootRows(all []VariableRow) []VariableRow {
 	var roots []VariableRow
-	for _, row := range all {
-		if row.Depth == 0 {
-			roots = append(roots, row)
+	for _, isAggregate := range []bool{false, true} {
+		for _, row := range all {
+			if row.Depth == 0 && aggregate(row) == isAggregate {
+				roots = append(roots, row)
+			}
 		}
 	}
 	return roots
@@ -84,8 +86,7 @@ type observationBlock struct {
 }
 
 func aggregate(row VariableRow) bool {
-	return row.Raw.Kind == observer.Array || row.Raw.Kind == observer.Struct ||
-		row.Raw.Kind == observer.String && len(row.Raw.Children) > 0
+	return row.Raw.Kind == observer.Array || row.Raw.Kind == observer.Struct
 }
 
 func (m Model) measuredValue(path, value string) int {
@@ -325,16 +326,7 @@ type observationShelf struct {
 func packObservations(blocks []observationBlock, w, widthClass int) []observationShelf {
 	var shelves []observationShelf
 	used := 0
-	var order []int
-	for _, aggregate := range []bool{false, true} {
-		for i, b := range blocks {
-			if b.aggregate == aggregate {
-				order = append(order, i)
-			}
-		}
-	}
-	for _, i := range order {
-		b := blocks[i]
+	for i, b := range blocks {
 		width := b.minWidth + (b.idealWidth-b.minWidth)*widthClass/3
 		if len(shelves) == 0 || used+2+width > w || blocks[shelves[len(shelves)-1].indices[0]].aggregate != b.aggregate {
 			shelves = append(shelves, observationShelf{height: 1, fullHeight: 1})
