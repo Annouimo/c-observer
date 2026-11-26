@@ -38,7 +38,7 @@ func run(args []string, out io.Writer) error {
 	if *versionOnly {fmt.Fprintln(out,version);return nil}
 	if *capabilities {
 		backends:=supportedBackends(runtime.GOOS)
-		return json.NewEncoder(out).Encode(map[string]any{"version":version,"sessionSchemaVersions":[]int{session.Version},"platform":runtime.GOOS,"arch":runtime.GOARCH,"backends":backends})
+		return json.NewEncoder(out).Encode(map[string]any{"version":version,"sessionSchemaVersions":[]int{session.Version},"platform":runtime.GOOS,"arch":runtime.GOARCH,"backends":backends,"sessionFeatures":[]string{"backend","comparison"}})
 	}
 	if len(supportedBackends(runtime.GOOS))==0 {return fmt.Errorf("unsupported platform: %s",runtime.GOOS)}
 	if *backend!="auto" && *backend!="gdb" && *backend!="lldb" {return fmt.Errorf("invalid backend: %s",*backend)}

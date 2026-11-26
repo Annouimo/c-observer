@@ -22,6 +22,7 @@ type LaunchConfig struct {
 	CompilerArgs       []string
 	Stdin              []byte
 	ExpectedStdout     *[]byte
+	Comparison         string // empty = raw bytes; otherwise Companion sample rule
 	Limits             Limits
 }
 

@@ -67,6 +67,33 @@ func CompareOutput(expected, actual []byte) []OutputLine {
 	}
 	return out
 }
+
+// Sample equality is separate from the raw byte table. Match the Companion
+// sample normalization for valid UTF-8 (including CRLF and JS whitespace).
+func sampleEqual(expected, actual []byte, mode string) (bool, bool) {
+	if mode == "" || !utf8.Valid(expected) || !utf8.Valid(actual) {
+		return bytes.Equal(expected, actual), false
+	}
+	normalize := func(value []byte) string {
+		text := strings.ReplaceAll(string(value), "\r\n", "\n")
+		switch mode {
+		case "trim-line-end":
+			lines := strings.Split(text, "\n")
+			for i := range lines {
+				lines[i] = strings.TrimRight(lines[i], " \t")
+			}
+			return strings.TrimRight(strings.Join(lines, "\n"), "\n")
+		case "tokens":
+			return strings.Join(strings.FieldsFunc(text, func(r rune) bool {
+				return strings.ContainsRune("\t\n\v\f\r \u00a0\u1680\u2028\u2029\u202f\u205f\u3000\ufeff", r) || (r >= 0x2000 && r <= 0x200a)
+			}), "\n")
+		default:
+			return text
+		}
+	}
+	return normalize(expected) == normalize(actual), true
+}
+
 func (m Model) outputComparison(w, h int) string {
 	lines := []string{head(" 输出对照 · 逐字节比较（非 OJ 判定）", m.focus == 2, w)}
 	if m.config.ExpectedStdout == nil {
@@ -85,6 +112,11 @@ func (m Model) outputComparison(w, h int) string {
 			msg = "输出一致"
 		}
 		lines = append(lines, muted.Render(msg))
+		if equal, applied := sampleEqual(*m.config.ExpectedStdout, out, m.config.Comparison); applied {
+			sample := "按样例规则：不一致"
+			if equal { sample = "按样例规则：一致" }
+			lines = append(lines, muted.Render(clip(sample+"（原始字节仍单独显示）", w)))
+		}
 	}
 	lines = append(lines, muted.Render(clip("· 空格  ↵ 换行  \\t 制表符  \\r 回车", w)))
 	rows := CompareOutput(*m.config.ExpectedStdout, out)

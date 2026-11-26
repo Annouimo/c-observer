@@ -30,6 +30,7 @@ type File struct {
 	CompilerArgs []string           `json:"compilerArgs,omitempty"`
 	StdinFile string                `json:"stdinFile"`
 	ExpectedStdoutFile *string      `json:"expectedStdoutFile,omitempty"`
+	Comparison string `json:"comparison,omitempty"`
 }
 
 func readRegular(path string, limit int64) ([]byte, error) {
@@ -101,6 +102,11 @@ func Load(path string) (observer.LaunchConfig, error) {
 	default: return cfg, fmt.Errorf("unsupported backend: %q", f.Backend)
 	}
 	cfg.Backend = f.Backend
+	switch f.Comparison {
+	case "", "exact", "trim-line-end", "tokens":
+	default: return cfg, fmt.Errorf("unsupported comparison: %q", f.Comparison)
+	}
+	cfg.Comparison = f.Comparison
 	cfg.Compiler, cfg.Debugger = f.Compiler,f.Debugger
 	cfg.CompilerArgs = append([]string(nil), f.CompilerArgs...)
 	cfg.Stdin, err = readRegular(resolve(f.StdinFile),maxSample)

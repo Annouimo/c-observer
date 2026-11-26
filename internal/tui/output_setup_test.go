@@ -57,3 +57,22 @@ func TestImportAndCompletion(t *testing.T) {
 		t.Fatal("import failed")
 	}
 }
+
+func TestCompanionSampleComparison(t *testing.T) {
+	for _, c := range []struct {
+		expected, actual, mode string
+		want bool
+	}{
+		{"1\n", "1\r\n", "exact", true},
+		{"1\n", "1 \t\r\n\n", "trim-line-end", true},
+		{"1 2", "1\u00a0\uFEFF2\r\n", "tokens", true},
+		{"1\n", "2\r\n", "exact", false},
+	} {
+		if got, applied := sampleEqual([]byte(c.expected), []byte(c.actual), c.mode); !applied || got != c.want {
+			t.Fatalf("%+v: %v %v", c, got, applied)
+		}
+	}
+	if _, applied := sampleEqual([]byte{0xff}, []byte{0xff}, "tokens"); applied {
+		t.Fatal("invalid UTF-8 must remain a byte comparison")
+	}
+}
