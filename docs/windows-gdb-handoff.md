@@ -27,3 +27,19 @@ go vet ./...
 ```
 
 首轮完成以这些结果为准：真实程序能编译、单步采集、返回独立输出，非零退出可辨识，取消死循环保留已有历史且进程消失，带空格和中文的路径可用。记录 Windows 版本、GCC/GDB/Python 版本、实际运行的测试和剩余限制。可选交付是一条 `-verify` 风格的自检命令，明确报出失败阶段。新版 Windows 真机跑通后再评估旧版 Dev-C++。
+
+
+## 2026-11-26 · Routilet 集成后的英文 Windows CI 回归
+
+当前产品候选已经包含 Windows GDB 真机分支 4433163，正式 CLI 选择 GDB，Windows 原生分发安装验证成功。但不能据此宣称 Windows 观察功能通过。
+
+- [英文 Windows 最初失败](https://github.com/Routilet/c-observer/actions/runs/45755211951/job/139692123063)：中文 fixture 触发 Python UnicodeDecodeError（charmap byte 0x90）。已加入 Windows ANSI 不可表示路径的显式错误与独立测试，保留 ACP 936 中文真机验收。
+- [ASCII 路径回归](https://github.com/Routilet/c-observer/actions/runs/45756193904/job/139695255417)，提交 1a018c1：已确认测试日志选择 ASCII/空格路径，先前编码异常消失，但 TestRealObservation 正常退出且 snapshots=0，未进入 compare，也没有 day 28→29；capture_limit request_timed_out、cancel 无快照；TestRealIdentityBoundaries 缺失迭代/递归帧，TestRealGlobalsAndStatics 未报告 globals，TestRealMappedSessionAndNonzeroExit 无映射快照。
+- LLDB 相对逻辑路径回归和真实 Companion 装配源码回放 15 快照已通过（run 45755496309 / job 139693049000），不要改动 LLDB 的已通过行为。
+- 最新 frontend CI 45756253752 新增 Linux/Windows GDB 真实装配源码回放。此文档只记录前一轮确证结果，新的结果需从 CI 独立核实。
+
+### 给后端维护者的任务
+
+使用 Windows hosted runner/MSYS2 UCRT64（与此前 ACP 936 真机结果对照），在 ASCII 含空格目录复现。检查 GDB 初始 main 断点是否实际命中、Python frame.find_sal / symtab.fullname 的真实值、_visible 和 _path 的规范化（包括 Windows 大小写、分隔符、绝对/相对路径及工作目录）、function breakpoint 安装；需要证据后再修复，不假设是单一原因。若主程序正常退出却未捕获任何快照，提供明确的可诊断结果，不用伪造快照。保持可靠身份、用户源码映射及 helper 跳过契约；不按 basename 无条件匹配不同目录。不要放宽现有测试断言。
+
+验收：原 Windows real engine 测试、真实 TUI 数组变化与自动关注、Companion 生成的映射 Session、ACP 936 真机中文路径及 ACP 不可表示路径的明确失败。确认 Linux GDB、LLDB 无回归。编译环境仅从配置/PATH 获取，不开发安装器，不引入下载链接。产品集成方负责前端与发行，后端问题请在独立分支修复后再合入。此阶段不发布 next/latest，直到 Windows 支持范围得到真实验证。
