@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       MODE: ${{ inputs.mode || (github.event_name == 'pull_request' && github.event.pull_request.number == 1 && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'feat/tui' && 'BOOTSTRAP_PR') || 'DRY_RUN' }}
-      VERSION: ${{ inputs.version || (github.event_name == 'pull_request' && github.event.pull_request.number == 1 && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'feat/tui' && '0.1.0-beta.1') || '0.1.0-dev.1' }}
+      VERSION: ${{ inputs.version || (github.event_name == 'pull_request' && github.event.pull_request.number == 1 && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'feat/tui' && '0.1.0-beta.2') || '0.1.0-dev.1' }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -52,12 +52,12 @@ jobs:
           set -euo pipefail
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc|dev)\.[0-9]+$ ]]
           if [[ "$MODE" == BOOTSTRAP_PR ]]; then
-            # Owner-approved first preview only: create a manual-publication artifact.
+            # Owner-approved second preview: create a manual-publication artifact.
             # The PR never receives an OIDC token or publishes to the registry.
             test "$GITHUB_EVENT_NAME" = pull_request
             test "$GITHUB_REF" = refs/pull/1/merge
             test "$GITHUB_HEAD_REF" = feat/tui
-            test "$VERSION" = 0.1.0-beta.1
+            test "$VERSION" = 0.1.0-beta.2
             test -s LICENSE
           elif [[ "$MODE" != DRY_RUN ]]; then
             test "$GITHUB_REF" = refs/heads/main
@@ -129,7 +129,7 @@ jobs:
         runner: [ubuntu-latest, macos-15, macos-15-intel]
     runs-on: ${{ matrix.runner }}
     env:
-      VERSION: ${{ inputs.version || (github.event_name == 'pull_request' && github.event.pull_request.number == 1 && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'feat/tui' && '0.1.0-beta.1') || '0.1.0-dev.1' }}
+      VERSION: ${{ inputs.version || (github.event_name == 'pull_request' && github.event.pull_request.number == 1 && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'feat/tui' && '0.1.0-beta.2') || '0.1.0-dev.1' }}
     steps:
       - uses: actions/setup-node@v6
         with:

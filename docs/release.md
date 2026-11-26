@@ -24,3 +24,7 @@ publish-npm.yml 支持 DRY_RUN（默认，private:true，不联网发行）、BO
 ## 首次公开预览包（维护者确认）
 
 PR #1（同仓库 feat/tui）的一次性 BOOTSTRAP_PR 模式生成 0.1.0-beta.1 的可公开发布 tarball；执行完整包检查和三平台原生安装检查，保留 SHA256SUMS。此模式不拥有 id-token 写权限、不调用 npm publish、不合入 main。维护者仅在该 CI 成功后下载并手动发布 `next`，用于最终审核。后续自动发布仍限定 main，待工作流合入后配置 Trusted Publisher 并使用不同版本号。不要重新发布已占用的 beta.1 版本；后续 PR 构建产物不是 registry 中已发行版本。
+
+## 第二次预览
+
+首发 beta.1 的固定历史产物：https://github.com/Annouimo/c-observer/actions/runs/45738301452/artifacts/15079363315 。合并映射身份修复后，PR #1 的手动发布产物改为 0.1.0-beta.2，避免不同内容重用 beta.1 版本。自动 OIDC 发布仍限定 main；待维护者完成 npm 首次发布及授权后再走自动流程。稳定版不在本轮发布范围。

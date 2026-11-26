@@ -12,3 +12,7 @@
 - 使用前端 PR 中 TestCompanionSessionReplay 及 Companion tests/standalone/observer-session-fixture.ts，后者由真实 prepareObservation 产生会话；先保证正常输出、映射和不进入辅助源码。可靠身份的断言在后端完成后加强。
 
 对于身份尚不可靠的映射数据，首版 UI 明确保留全部采集范围，不推断变量变化。是否将此能力作为稳定发行的必要门槛，由维护者在真实使用验收后决定。GDB 分支保持独立。
+
+## 联调进展
+
+Codex `6172e88` 已合入 feat/tui（合并提交 `371e890`）：以物理行、冻结源码及 presumed location 核验身份；保留用户回调，跳过 preset 辅助函数；分离链接参数。TestCompanionSessionReplay 现要求真实可靠身份、变化与 0..4 自动关注范围，而非仅检查正常输出。仍需 CI 和 Mac 实际体验验收，复杂作用域的保守降级保持不变。

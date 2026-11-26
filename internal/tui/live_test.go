@@ -130,6 +130,9 @@ func TestCompanionSessionReplay(t *testing.T) {
 	}
 	originalLines := strings.Split(string(original), "\n")
 	seenArray := false
+	seenReliable := false
+	seenFocus := false
+	seenChange := false
 	for pos, snap := range result.Snapshots {
 		m.seek(pos)
 		if snap.Location.File != cfg.VisibleSourcePaths[0] || snap.Location.Line < 1 || snap.Location.Line > len(originalLines) {
@@ -138,18 +141,30 @@ func TestCompanionSessionReplay(t *testing.T) {
 		for _, row := range m.replay.Rows(nil) {
 			if row.Name == "a" && row.Raw.Kind == observer.Array && len(row.Raw.Children) > 0 {
 				seenArray = true
+				if row.Reliable {
+					seenReliable = true
+					focus := m.displayFocus(row)
+					if focus.Automatic && focus.Rows.Lo == 0 && focus.Rows.Hi == 4 {
+						seenFocus = true
+					}
+					for _, child := range m.replay.Rows(nil) {
+						if child.Parent == row.Key && child.Changed {
+							seenChange = true
+						}
+					}
+				}
 				if !row.Reliable && m.displayFocus(row).Automatic {
 					t.Fatal("unreliable mapped array must not be cropped")
 				}
 			}
 		}
 	}
-	if !seenArray {
-		t.Fatal("mapped user array not captured")
+	if !seenArray || !seenReliable || !seenFocus || !seenChange {
+		t.Fatalf("mapped adaptive focus: array=%v reliable=%v focus=%v change=%v", seenArray, seenReliable, seenFocus, seenChange)
 	}
 	m.seek(len(result.Snapshots))
 	if !strings.Contains(m.View(), "输出一致") {
 		t.Fatal("mapped final output comparison missing")
 	}
-	t.Logf("Companion-generated mapped session replayed %d snapshots", len(result.Snapshots))
+	t.Logf("Companion-generated mapped session replayed %d snapshots; verified reliable identity, actual changes and focus 0..4", len(result.Snapshots))
 }
