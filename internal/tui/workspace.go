@@ -169,6 +169,7 @@ func (m Model) workspaceMode() bool {
 	}
 	return false
 }
+
 type menuAction struct {
 	key, label string
 }
