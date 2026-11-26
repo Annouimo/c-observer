@@ -123,6 +123,12 @@ func (Engine) Run(ctx context.Context, config observer.LaunchConfig) (result obs
 		}
 		return
 	}
+	identity := mainIdentity{source: source}
+	var index sourceIndex
+	if len(config.SourceMap) == 0 {
+		index = inspectSource(ctx, compiler, dir, source, files[source], compilerArgs)
+		identity.lines = index.mainLines
+	}
 	for path, original := range files {
 		data, err := os.ReadFile(path)
 		if err != nil || string(data) != original {
@@ -163,7 +169,7 @@ func (Engine) Run(ctx context.Context, config observer.LaunchConfig) (result obs
 	}()
 
 	run := capture{adapter: d, ctx: ctx, limits: limits, dir: dir, files: files,
-		config: config, result: &result, output: output, stderr: stderr}
+		config: config, result: &result, output: output, stderr: stderr, identity: identity, index: index}
 	if err := run.observe(exe, input); err != nil {
 		finishError(err)
 	}
@@ -301,6 +307,8 @@ func readOutput(stdout, stderr string, limit int) (observer.OutputState, error) 
 }
 
 type capture struct {
+	identity mainIdentity
+	index    sourceIndex
 	*adapter
 	ctx            context.Context
 	limits         observer.Limits
@@ -352,7 +360,15 @@ func (c *capture) observe(exe, input string) error {
 	if !caps.FunctionBreakpoints {
 		return errors.New("LLDB does not support a breakpoint at main")
 	}
-	if err := c.ask("setFunctionBreakpoints", map[string]any{"breakpoints": []map[string]string{{"name": "main"}}}, nil); err != nil {
+	points := []map[string]string{{"name": "main"}}
+	if !c.skip(c.identity.source) {
+		for _, name := range c.index.functions {
+			if name != "main" {
+				points = append(points, map[string]string{"name": name})
+			}
+		}
+	}
+	if err := c.ask("setFunctionBreakpoints", map[string]any{"breakpoints": points}, nil); err != nil {
 		return err
 	}
 	if err := c.keepLocations(); err != nil {
@@ -418,6 +434,13 @@ func (c *capture) observe(exe, input string) error {
 		command := "continue"
 		if visible {
 			command = "next"
+		} else {
+			for _, frame := range frames {
+				if frame.Location.File != "" && !c.skip(frame.Location.File) {
+					command = "stepOut"
+					break
+				}
+			}
 		}
 		if err := c.ask(command, map[string]any{"threadId": stop.ThreadID}, nil); err != nil {
 			return err
