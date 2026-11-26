@@ -2,12 +2,29 @@
 import gdb
 import json
 import os
-import re
+import ntpath
 
 _opts = {}
 _visible = set()
+_visible_paths = {}
+_source_map = {}
 _entry_caller = None
 _started = False
+
+
+_path_module = ntpath if os.name == "nt" else os.path
+
+
+def _absolute_path(path):
+    return _path_module.normpath(_path_module.join(_opts["Directory"], path))
+
+
+def _path_key(path):
+    normalized = _absolute_path(path)
+    # MSYS2's native Python can leave forward slashes in normpath results.
+    if os.name == "nt":
+        return normalized.replace("/", "\\").lower()
+    return normalized
 
 
 def _path(path):
@@ -21,18 +38,16 @@ def _path(path):
         except UnicodeError:
             pass
     for candidate in paths:
-        absolute = os.path.normpath(os.path.join(_opts["Directory"], candidate))
-        for key in (candidate, absolute, os.path.basename(candidate)):
-            mapped = (_opts["Map"] or {}).get(key)
-            if mapped:
-                return os.path.normpath(os.path.join(_opts["Directory"], mapped))
-        if absolute in _visible:
-            return absolute
-    return os.path.normpath(os.path.join(_opts["Directory"], path))
+        key = _path_key(candidate)
+        mapped = _source_map.get(key)
+        if mapped is not None:
+            return _visible_paths.get(mapped, "")
+        if key in _visible_paths:
+            return _visible_paths[key]
+    return _absolute_path(path)
 
 
-
-def _windows_function_breakpoints():
+def _visible_function_breakpoints():
     # Native GDB's rbreak can miss relative DWARF paths. Query the symbol
     # table through MI so the result is independent of console formatting.
     if not hasattr(gdb, "execute_mi"):
@@ -40,7 +55,7 @@ def _windows_function_breakpoints():
     result = gdb.execute_mi("-symbol-info-functions", "--max-results", "256")
     names = {"main"}
     for file in result.get("symbols", {}).get("debug", []):
-        if not any(_path(file.get(key)) in _visible for key in ("filename", "fullname")):
+        if _path(file.get("fullname") or file.get("filename")) not in _visible:
             continue
         for item in file.get("symbols", []):
             name = item["name"]
@@ -50,17 +65,20 @@ def _windows_function_breakpoints():
 
 
 def observer_init(options):
-    global _opts, _visible
+    global _opts, _visible, _visible_paths, _source_map
     _opts = json.loads(options)
     _visible = set(_opts["Files"] or [])
+    _visible_paths = {_path_key(path): path for path in _visible}
+    _source_map = {_path_key(key): _path_key(target)
+                   for key, target in (_opts["Map"] or {}).items()}
     main = gdb.lookup_global_symbol("main")
     if main is None or main.symtab is None:
         raise gdb.GdbError("No C main function with debug information")
-    if _opts["Source"] in _visible:
+    if _opts["Source"] in _visible or _source_map:
         try:
-            if os.name == "nt":
+            if os.name == "nt" or _source_map:
                 gdb.Breakpoint("main", internal=True)
-                _windows_function_breakpoints()
+                _visible_function_breakpoints()
             elif not gdb.rbreak(".*", minsyms=False, throttle=256, symtabs=[main.symtab]):
                 gdb.Breakpoint("main", internal=True)
         except (gdb.error, RuntimeError):
@@ -187,6 +205,15 @@ def _blocks(frame):
     return blocks
 
 
+def _verified_location(location):
+    file = location["file"]
+    if not file:
+        return False
+    if not _source_map:
+        return file in _visible
+    return bool((_opts["VerifiedLines"] or {}).get(file, {}).get(str(location["line"])))
+
+
 def observer_capture():
     global _entry_caller, _started
     frames = []
@@ -199,7 +226,8 @@ def observer_capture():
     if frame is None:
         for depth in reversed(range(len(frames) - 1)):
             loc = locations[depth]
-            if loc["function"] == "main" and loc["file"] == _opts["Source"]:
+            if (loc["function"] == "main" and _verified_location(loc) and
+                    (_source_map or loc["file"] == _opts["Source"])):
                 caller = frames[depth + 1].pc()
                 if not _started and depth == 0:
                     _entry_caller = caller
@@ -239,13 +267,13 @@ def observer_capture():
                         identity += ":" + str(block.start)
                     if identity not in static_ids:
                         static_ids.add(identity)
-                        value = _value(name, name, _read(symbol, frame), identity, True, budget, 0, decl)
+                        value = _value(name, name, _read(symbol, frame), identity, _verified_location(decl), budget, 0, decl)
                         value.update(scope=scope, declaration=decl)
                         result["globals"].append(value)
                     continue
                 value = _read(symbol, frame)
                 typ = value.type.strip_typedefs() if value is not None else None
-                reliable = (reliable_frame and block.function is not None and
+                reliable = (reliable_frame and _verified_location(decl) and block.function is not None and
                             (symbol.is_argument or typ is not None and not typ.dynamic))
                 identity = frame_id + ":" + str(block_no) + ":" + str(len(frame_info["variables"]))
                 if reliable:

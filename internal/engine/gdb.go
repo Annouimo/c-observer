@@ -211,6 +211,7 @@ type gdbOptions struct {
 	Depth, Nodes, Array int
 	Map                 map[string]string
 	Directory           string
+	VerifiedLines       map[string]map[int]bool
 }
 
 func (c *capture) observeGDB(debugger, exe, input, temp, source string) error {
@@ -254,6 +255,20 @@ func (c *capture) observeGDB(debugger, exe, input, temp, source string) error {
 			opts.Files = append(opts.Files, file.Path)
 		}
 	}
+	for _, origin := range buildSourceOrigins(c.files[source], c.dir, c.files, c.config.SourceMap) {
+		if origin.file == "" || c.skip(origin.file) {
+			continue
+		}
+		if opts.VerifiedLines == nil {
+			opts.VerifiedLines = make(map[string]map[int]bool)
+		}
+		lines := opts.VerifiedLines[origin.file]
+		if lines == nil {
+			lines = make(map[int]bool)
+			opts.VerifiedLines[origin.file] = lines
+		}
+		lines[origin.line] = true
+	}
 	init := "python exec(compile(open(" + strconv.QuoteToASCII(script) + ", encoding='utf-8').read(), " + strconv.QuoteToASCII(script) + ", 'exec')); observer_init(__import__('base64').b64decode(" + strconv.Quote(base64.StdEncoding.EncodeToString([]byte(quotedJSON(opts)))) + ").decode('utf-8'))"
 	settings := []string{"-gdb-set confirm off", "-gdb-set mi-async on", "-gdb-set backtrace past-main on", "-gdb-set auto-load off", "-gdb-set print elements 16"}
 	if runtime.GOOS == "linux" {
@@ -286,6 +301,7 @@ func (c *capture) observeGDB(debugger, exe, input, temp, source string) error {
 		return err
 	}
 	var history int64
+	var firstStop *observer.SourceLocation
 	for {
 		stopCtx, cancel := context.WithTimeout(c.ctx, time.Duration(c.limits.RequestTimeoutMillis)*time.Millisecond)
 		line, err := m.stop(stopCtx)
@@ -296,7 +312,14 @@ func (c *capture) observeGDB(debugger, exe, input, temp, source string) error {
 		switch {
 		case strings.Contains(line, `reason="exited-normally"`):
 			code := 0
-			c.result.ExitCode, c.result.Reason = &code, observer.Exited
+			c.result.ExitCode = &code
+			if len(c.result.Snapshots) == 0 {
+				if firstStop == nil {
+					return errors.New("GDB program exited without reaching an observation stop")
+				}
+				return fmt.Errorf("GDB program exited without observable snapshots; first stop was %s at %q:%d", firstStop.Function, firstStop.ReportedFile, firstStop.Line)
+			}
+			c.result.Reason = observer.Exited
 			return nil
 		case strings.Contains(line, `reason="exited"`):
 			_, tail, _ := strings.Cut(line, `exit-code="`)
@@ -325,6 +348,10 @@ func (c *capture) observeGDB(debugger, exe, input, temp, source string) error {
 		var snapshot observer.Snapshot
 		if err := json.Unmarshal([]byte(payload), &snapshot); err != nil {
 			return fmt.Errorf("decode GDB observation: %w", err)
+		}
+		if firstStop == nil {
+			location := snapshot.Location
+			firstStop = &location
 		}
 		visible := snapshot.Location.File != "" && !c.skip(snapshot.Location.File)
 		command := "-exec-continue"

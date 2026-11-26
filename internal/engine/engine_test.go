@@ -397,15 +397,12 @@ func testOutput(text string) string {
 }
 
 func TestRealMappedCallbackAndIdentity(t *testing.T) {
-	if runtime.GOOS == "windows" || os.Getenv("C_OBSERVER_REAL_DEBUGGER") != "1" {
-		t.Skip("requires the real LLDB backend")
-	}
 	config := realConfig(t)
 	user := filepath.Join(config.WorkDir, "frozen.c")
 	original := "static int compare(int x) { return x + 1; }\n" +
 		"int main(void) {\n    int values[2] = { 28, 0 };\n" +
 		"    values[0] = helper(compare, values[0]);\n    return values[0] != 29;\n}\n"
-	assembled := "#line 1 \"preset/helper.c\"\nstatic int helper(int (*fn)(int), int x) { return fn(x); }\n" +
+	assembled := "#line 1 \"preset/student.c\"\nstatic int helper(int (*fn)(int), int x) { return fn(x); }\n" +
 		"#line 1 \"student.c\"\n" + original
 	for file, text := range map[string]string{user: original, config.SourcePath: assembled} {
 		if err := os.WriteFile(file, []byte(text), 0600); err != nil {
@@ -415,7 +412,7 @@ func TestRealMappedCallbackAndIdentity(t *testing.T) {
 	config.VisibleSourcePaths = []string{user}
 	config.SourceMap = map[string]string{"student.c": user, filepath.Join(config.WorkDir, "student.c"): user}
 	config.KeepLocations, config.ArrayRanges = nil, nil
-	result := (Engine{}).Run(context.Background(), config)
+	result := realEngine().Run(context.Background(), config)
 	if result.Reason != observer.Exited || result.CleanupError != "" {
 		t.Fatalf("mapped run: %s %s cleanup %q", result.Reason, result.Message, result.CleanupError)
 	}
@@ -442,15 +439,35 @@ func TestRealMappedCallbackAndIdentity(t *testing.T) {
 	}
 }
 
+func TestRealGDBReportsNoObservableSnapshots(t *testing.T) {
+	if os.Getenv("C_OBSERVER_REAL_GDB") != "1" {
+		t.Skip("requires the real GDB backend")
+	}
+	config := realConfig(t)
+	config.KeepLocations = nil
+	config.SkipSourcePaths = []string{config.SourcePath}
+	result := (GDBEngine{}).Run(context.Background(), config)
+	if result.Reason != observer.BackendFailed || result.ExitCode == nil || *result.ExitCode != 0 ||
+		len(result.Snapshots) != 0 || !strings.Contains(result.Message, "first stop was main") {
+		t.Fatalf("missing zero-snapshot diagnostic: %s %s, exit=%v, snapshots=%d",
+			result.Reason, result.Message, result.ExitCode, len(result.Snapshots))
+	}
+}
+
 func TestWindowsGDBUnrepresentablePath(t *testing.T) {
-	if runtime.GOOS != "windows" { t.Skip("native Windows ANSI path contract") }
+	if runtime.GOOS != "windows" {
+		t.Skip("native Windows ANSI path contract")
+	}
 	dir := filepath.Join(t.TempDir(), "课程")
 	source := filepath.Join(dir, "学生.c")
 	if _, err := encodeMI(source); err == nil {
-		t.Skip("this Windows code page can represent Chinese paths; real fixtures test those paths")
+		source = filepath.Join(dir, "emoji 💡.c")
 	}
-	result := (GDBEngine{}).Run(context.Background(),observer.LaunchConfig{SourcePath:source,WorkDir:dir})
-	if result.Reason != observer.InvalidConfig || !strings.Contains(result.Message,"ANSI code page") {
-		t.Fatalf("unrepresentable path did not produce actionable configuration error: %+v",result)
+	if _, err := encodeMI(source); err == nil {
+		t.Skip("this Windows code page can represent both path fixtures")
+	}
+	result := (GDBEngine{}).Run(context.Background(), observer.LaunchConfig{SourcePath: source, WorkDir: dir})
+	if result.Reason != observer.InvalidConfig || !strings.Contains(result.Message, "ANSI code page") {
+		t.Fatalf("unrepresentable path did not produce actionable configuration error: %+v", result)
 	}
 }
