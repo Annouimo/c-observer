@@ -61,7 +61,7 @@ func TestImportAndCompletion(t *testing.T) {
 func TestCompanionSampleComparison(t *testing.T) {
 	for _, c := range []struct {
 		expected, actual, mode string
-		want bool
+		want                   bool
 	}{
 		{"1\n", "1\r\n", "exact", true},
 		{"1\n", "1 \t\r\n\n", "trim-line-end", true},

@@ -114,7 +114,9 @@ func (m Model) outputComparison(w, h int) string {
 		lines = append(lines, muted.Render(msg))
 		if equal, applied := sampleEqual(*m.config.ExpectedStdout, out, m.config.Comparison); applied {
 			sample := "按样例规则：不一致"
-			if equal { sample = "按样例规则：一致" }
+			if equal {
+				sample = "按样例规则：一致"
+			}
 			lines = append(lines, muted.Render(clip(sample+"（原始字节仍单独显示）", w)))
 		}
 	}
