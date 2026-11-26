@@ -66,10 +66,22 @@ func key(m Model, k string) Model {
 	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)})
 	return next.(Model)
 }
+func selectTestRoot(t *testing.T, m *Model, name string) {
+	t.Helper()
+	for i, root := range rootRows(m.replay.Rows(nil)) {
+		if root.Name == name {
+			m.varCursor = i
+			return
+		}
+	}
+	t.Fatalf("missing root %s", name)
+}
+
 func TestInspectorNavigation(t *testing.T) {
 	m := NewPreview(fixture(t, "wrong-index"))
 	m.focus = 1
 	m.replay.Seek(2)
+	selectTestRoot(t, &m, "a")
 	m = key(m, "d")
 	if m.mode != "detail" || !strings.Contains(m.View(), "10 → 17") {
 		t.Fatal("missing detail")
@@ -94,7 +106,7 @@ func TestInspectorNavigation(t *testing.T) {
 	if m.replay.Position != 2 || m.mode != "" {
 		t.Fatal("history jump")
 	}
-	m.varCursor = 0
+	selectTestRoot(t, &m, "a")
 	m = key(m, "a")
 	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = next.(Model)
@@ -126,6 +138,7 @@ func TestInspectorFitsTerminal(t *testing.T) {
 	m := NewPreview(fixture(t, "wrong-index"))
 	m.focus = 1
 	m.replay.Seek(2)
+	selectTestRoot(t, &m, "a")
 	for _, mode := range []string{"d", "h", "a"} {
 		for _, size := range [][2]int{{100, 30}, {86, 14}, {45, 14}} {
 			x := m
