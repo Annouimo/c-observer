@@ -87,3 +87,5 @@ The v1 session fixture exercises the actual session loader, source mapping,
 
 Incompatible IDE/CI job policies and older Dev-C++ toolchains have yet to be
 exercised. The release CLI exposes LLDB on macOS and Linux.
+
+Windows GitHub hosted runner uses a different ANSI locale from the tested Chinese Windows machine. The real tests retain Chinese names when representable; on a locale that cannot encode them, use ASCII paths with spaces and independently assert the actionable rejection of an unrepresentable path. This is not full Unicode support. Chinese paths on ACP 936 remain a real acceptance requirement. No compiler downloads or IDE scanning are part of the application.

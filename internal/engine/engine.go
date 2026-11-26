@@ -80,6 +80,16 @@ func runEngine(ctx context.Context, config observer.LaunchConfig, useGDB bool) (
 		return
 	}
 	source := absolute(dir, config.SourcePath)
+	if useGDB && runtime.GOOS == "windows" {
+		// Native GDB versions validated so far use the Windows ANSI code page
+		// for filenames. Report unsupported paths before launching the inferior.
+		for _, name := range append([]string{dir, source}, config.VisibleSourcePaths...) {
+			if _, err := encodeMI(absolute(dir, name)); err != nil {
+				result.Reason, result.Message = observer.InvalidConfig, err.Error() + "; use a path representable in the current Windows ANSI code page (e.g. an ASCII directory)"
+				return
+			}
+		}
+	}
 	files := map[string]string{}
 	for _, name := range append([]string{source}, config.VisibleSourcePaths...) {
 		path := absolute(dir, name)

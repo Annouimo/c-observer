@@ -22,7 +22,19 @@ func realConfig(t *testing.T) observer.LaunchConfig {
 	if os.Getenv("C_OBSERVER_REAL_GDB") != "1" && (runtime.GOOS == "windows" || os.Getenv("C_OBSERVER_REAL_DEBUGGER") != "1") {
 		t.Skip("set C_OBSERVER_REAL_DEBUGGER=1 to run LLDB against real C programs")
 	}
-	dir := filepath.Join(t.TempDir(), "课程 sample")
+	root := t.TempDir()
+	dir := filepath.Join(root, "课程 sample")
+	chinese := true
+	if runtime.GOOS == "windows" {
+		if _, err := encodeMI(filepath.Join(dir, "学生 源码.c")); err != nil {
+			// Real native GDB on a Western ANSI locale cannot represent this
+			// fixture. Test the ASCII/space workflow and exercise the explicit
+			// unsupported-path result separately.
+			dir = filepath.Join(root, "course sample")
+			chinese = false
+			t.Log("Windows ANSI code page cannot encode Chinese fixture; testing supported path and separate rejection")
+		}
+	}
 	if err := os.Mkdir(dir, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +43,7 @@ func realConfig(t *testing.T) observer.LaunchConfig {
 		t.Fatal(err)
 	}
 	name := "student program.c"
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == "windows" && chinese {
 		name = "学生 源码.c"
 	}
 	source := filepath.Join(dir, name)
@@ -427,5 +439,18 @@ func TestRealMappedCallbackAndIdentity(t *testing.T) {
 	}
 	if !callback || ids["28"] == "" || ids["28"] != ids["29"] {
 		t.Fatalf("mapped callback or array identity missing: callback=%v ids=%v", callback, ids)
+	}
+}
+
+func TestWindowsGDBUnrepresentablePath(t *testing.T) {
+	if runtime.GOOS != "windows" { t.Skip("native Windows ANSI path contract") }
+	dir := filepath.Join(t.TempDir(), "课程")
+	source := filepath.Join(dir, "学生.c")
+	if _, err := encodeMI(source); err == nil {
+		t.Skip("this Windows code page can represent Chinese paths; real fixtures test those paths")
+	}
+	result := (GDBEngine{}).Run(context.Background(),observer.LaunchConfig{SourcePath:source,WorkDir:dir})
+	if result.Reason != observer.InvalidConfig || !strings.Contains(result.Message,"ANSI code page") {
+		t.Fatalf("unrepresentable path did not produce actionable configuration error: %+v",result)
 	}
 }
