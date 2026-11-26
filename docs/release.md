@@ -34,3 +34,5 @@ PR #1（同仓库 feat/tui）的一次性 BOOTSTRAP_PR 模式生成 0.1.0-beta.1
 ## 更新后的预览范围
 
 新 scope 首次迁移发行已由维护者确认完成，移除 BOOTSTRAP_PR / BOOTSTRAP_PACK，仅保留 DRY_RUN 与 main 人工触发 PUBLISH_NEXT。新增 win32-x64 构建、zip、清单和 Windows 原生安装测试；GDB 真机引擎已有记录，但正式入口/TUI/分发仍需联合验收。Windows 仅 x64，macOS LLDB，Linux 双后端。旧段落中的 LLDB-only、旧首发步骤为历史记录，不再作为计划。正式 latest 和独立 Release 尚待验收后启用。
+
+Windows 新增实际依赖 go-localereader v0.0.1：固定版本上游 README 明确声明 MIT 并署名 Yasuhiro Matsumoto，但无独立 LICENSE。收集器仅为此精确版本校验原 README、保留原声明并补充标准 MIT 条款，不伪造上游许可文件或年份；其他缺失许可证仍阻止构建。正式发行前维护者审核此处理。

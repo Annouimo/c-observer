@@ -43,9 +43,21 @@ export async function collectNotices(destination, targets) {
   async function append(label, root, recursive) {
     if (!root) throw Error("Missing module directory for " + label);
     const files = await legalFiles(root, recursive);
-    if (!files.some(file => /^(?:licen[sc]es?|copying|unlicense)(?:$|[._-])/i.test(path.basename(file))))
-      throw Error("No upstream license found for " + label + "; review before redistribution");
-    sections.push("## " + label, "");
+    if (!files.some(file => /^(?:licen[sc]es?|copying|unlicense)(?:$|[._-])/i.test(path.basename(file)))) {
+      // Upstream v0.0.1 explicitly declares MIT in its README but ships no LICENSE.
+      // Preserve the actual upstream declaration plus standard MIT terms; never
+      // extend this exception to a different module or version without review.
+      if (label !== "github.com/mattn/go-localereader v0.0.1")
+        throw Error("No upstream license found for " + label + "; review before redistribution");
+      const readme = await fs.readFile(path.join(root, "README.md"), "utf8");
+      if (!/^## License\s+MIT\s*$/m.test(readme) || !readme.includes("Yasuhiro Matsumoto"))
+        throw Error("Reviewed upstream license declaration changed: " + label);
+      sections.push("## " + label, "", "--- upstream README.md ---", readme.trimEnd(), "",
+        "--- Standard MIT license terms (upstream explicitly declares MIT; no separate copyright year supplied) ---",
+        (await fs.readFile(new URL("../licenses/go-localereader-MIT.txt", import.meta.url), "utf8")).trimEnd(), "");
+    } else {
+      sections.push("## " + label, "");
+    }
     for (const file of files) {
       sections.push("--- " + path.relative(root, file).split(path.sep).join("/") + " ---", (await fs.readFile(file, "utf8")).trimEnd(), "");
     }
