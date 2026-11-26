@@ -9,6 +9,7 @@ type Engine interface {
 }
 
 type LaunchConfig struct {
+	Backend string // empty or auto, gdb, lldb
 	SourcePath         string
 	WorkDir            string
 	VisibleSourcePaths []string
@@ -21,6 +22,7 @@ type LaunchConfig struct {
 	CompilerArgs       []string
 	Stdin              []byte
 	ExpectedStdout     *[]byte
+	Comparison         string // empty = raw bytes; otherwise Companion sample rule
 	Limits             Limits
 }
 

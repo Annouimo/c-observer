@@ -1,0 +1,38 @@
+name: Observer distribution preview
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: go test ./...
+      - run: go vet ./...
+      - run: node scripts/package-preview.mjs 0.1.0-dev.1 "$RUNNER_TEMP/observer-dist"
+      - name: Install npm tarball with legacy launcher flags
+        run: |
+          set -eu
+          file="$(find "$RUNNER_TEMP/observer-dist" -maxdepth 1 -name '*.tgz' -print -quit)"
+          npm install --prefix "$RUNNER_TEMP/observer-install" --no-save --ignore-scripts --no-audit --no-fund "$file"
+          binary="$RUNNER_TEMP/observer-install/node_modules/@routilet/c-observer/bin/linux-x64/c-observer"
+          test -x "$binary"
+          test "$("$binary" --version)" = "0.1.0-dev.1"
+          "$binary" --capabilities
+      - uses: actions/upload-artifact@v4
+        with:
+          name: observer-distribution-preview
+          path: |
+            ${{ runner.temp }}/observer-dist/*.tgz
+            ${{ runner.temp }}/observer-dist/*.tar.gz
+            ${{ runner.temp }}/observer-dist/*.zip
+          if-no-files-found: error

@@ -24,9 +24,25 @@ const cleanupTimeout = 2 * time.Second
 // Engine is stateless. Each Run owns its adapter, executable and capture files.
 type Engine struct{}
 
+// GDBEngine runs the same observation contract with GCC and GDB/MI on Linux and Windows.
+type GDBEngine struct{}
+
+var _ observer.Engine = GDBEngine{}
+
+func (GDBEngine) Run(ctx context.Context, config observer.LaunchConfig) observer.RunResult {
+	if runtime.GOOS != "linux" && runtime.GOOS != "windows" {
+		return observer.RunResult{Reason: observer.InvalidConfig, Message: "GDB observation currently supports Linux and Windows"}
+	}
+	return runEngine(ctx, config, true)
+}
+
 var _ observer.Engine = Engine{}
 
-func (Engine) Run(ctx context.Context, config observer.LaunchConfig) (result observer.RunResult) {
+func (Engine) Run(ctx context.Context, config observer.LaunchConfig) observer.RunResult {
+	return runEngine(ctx, config, false)
+}
+
+func runEngine(ctx context.Context, config observer.LaunchConfig, useGDB bool) (result observer.RunResult) {
 	limits, err := defaults(config.Limits)
 	if err != nil {
 		result.Reason, result.Message = observer.InvalidConfig, err.Error()
@@ -64,6 +80,16 @@ func (Engine) Run(ctx context.Context, config observer.LaunchConfig) (result obs
 		return
 	}
 	source := absolute(dir, config.SourcePath)
+	if useGDB && runtime.GOOS == "windows" {
+		// Native GDB versions validated so far use the Windows ANSI code page
+		// for filenames. Report unsupported paths before launching the inferior.
+		for _, name := range append([]string{dir, source}, config.VisibleSourcePaths...) {
+			if _, err := encodeMI(absolute(dir, name)); err != nil {
+				result.Reason, result.Message = observer.InvalidConfig, err.Error() + "; use a path representable in the current Windows ANSI code page (e.g. an ASCII directory)"
+				return
+			}
+		}
+	}
 	files := map[string]string{}
 	for _, name := range append([]string{source}, config.VisibleSourcePaths...) {
 		path := absolute(dir, name)
@@ -78,12 +104,16 @@ func (Engine) Run(ctx context.Context, config observer.LaunchConfig) (result obs
 		files[path] = string(data)
 		result.Session.Sources = append(result.Session.Sources, observer.SourceFile{Path: path, Text: string(data)})
 	}
-	compiler, err := tool(ctx, dir, config.Compiler, "clang")
+	compilerName, debuggerNames := "clang", []string{"lldb-dap", "lldb-dap-19"}
+	if useGDB {
+		compilerName, debuggerNames = "gcc", []string{"gdb"}
+	}
+	compiler, err := tool(ctx, dir, config.Compiler, compilerName)
 	if err != nil {
 		finishError(err)
 		return
 	}
-	debugger, err := tool(ctx, dir, config.Debugger, "lldb-dap", "lldb-dap-19")
+	debugger, err := tool(ctx, dir, config.Debugger, debuggerNames...)
 	if err != nil {
 		finishError(err)
 		return
@@ -98,22 +128,63 @@ func (Engine) Run(ctx context.Context, config observer.LaunchConfig) (result obs
 			result.CleanupError = strings.TrimSpace(result.CleanupError + " " + err.Error())
 		}
 	}()
-	exe := filepath.Join(temp, "program")
+	buildTemp := temp
+	exeName := "program"
+	if useGDB && runtime.GOOS == "windows" {
+		exeName += ".exe"
+		// GCC's child tools can misinterpret a non-ASCII temporary directory.
+		if strings.IndexFunc(temp, func(r rune) bool { return r > 127 }) >= 0 {
+			root := filepath.Join(os.Getenv("LOCALAPPDATA"), "Temp")
+			if !filepath.IsAbs(root) || strings.IndexFunc(root, func(r rune) bool { return r > 127 }) >= 0 {
+				finishError(errors.New("this Windows GCC needs an ASCII TEMP path for compiler artifacts"))
+				return
+			}
+			buildTemp, err = os.MkdirTemp(root, "c-observer-build-")
+			if err != nil {
+				finishError(fmt.Errorf("create ASCII GCC temporary directory: %w", err))
+				return
+			}
+			defer func() {
+				if err := os.RemoveAll(buildTemp); err != nil {
+					result.CleanupError = strings.TrimSpace(result.CleanupError + " " + err.Error())
+				}
+			}()
+		}
+	}
+	exe := filepath.Join(buildTemp, exeName)
 	compilerArgs, err := compilerSDKArgs(ctx, runtime.GOOS, config.CompilerArgs)
 	if err != nil {
 		finishError(err)
 		return
 	}
-	args := append(append([]string{"-std=c99"}, compilerArgs...), "-g", "-O0", source, "-o", exe)
+	compileSource := source
+	if useGDB && runtime.GOOS == "windows" {
+		if relative, err := filepath.Rel(dir, source); err == nil {
+			compileSource = relative
+		}
+	}
+
+	compileArgs, libraries := separateLibraries(compilerArgs)
+	args := append(append([]string{"-std=c99"}, compileArgs...), "-g", "-O0", compileSource)
+	args = append(append(args, libraries...), "-o", exe)
 	build := exec.CommandContext(ctx, compiler, args...)
 	build.Dir = dir
-	configureProcess(build)
+	if buildTemp != temp {
+		build.Env = append(os.Environ(), "TMP="+buildTemp, "TEMP="+buildTemp)
+	}
 	build.Cancel = func() error { return killProcessGroup(build) }
 	build.WaitDelay = cleanupTimeout
 	var diagnostics cappedBuffer
 	diagnostics.limit = limits.MaxOutputBytes
 	build.Stdout, build.Stderr = &diagnostics, &diagnostics
-	if err := build.Run(); err != nil {
+	_, releaseBuild, buildErr := startManagedProcess(build)
+	if buildErr == nil {
+		buildErr = build.Wait()
+		if err := releaseBuild(); err != nil {
+			result.CleanupError = err.Error()
+		}
+	}
+	if err := buildErr; err != nil {
 		if ctx.Err() == nil {
 			result.Reason = observer.CompileFailed
 		}
@@ -122,6 +193,13 @@ func (Engine) Run(ctx context.Context, config observer.LaunchConfig) (result obs
 			result.Diagnostics = append(result.Diagnostics, observer.Diagnostic{Severity: "error", Message: message})
 		}
 		return
+	}
+	var index sourceIndex
+	var identity mainIdentity
+	if !useGDB {
+		origins := buildSourceOrigins(files[source], dir, files, config.SourceMap)
+		index = inspectSource(ctx, compiler, dir, source, files[source], compileArgs, origins)
+		identity = mainIdentity{source: index.mainSource, lines: index.mainLines}
 	}
 	for path, original := range files {
 		data, err := os.ReadFile(path)
@@ -135,6 +213,14 @@ func (Engine) Run(ctx context.Context, config observer.LaunchConfig) (result obs
 		finishError(err)
 		return
 	}
+	if useGDB {
+		run := capture{ctx: ctx, limits: limits, dir: dir, files: files,
+			config: config, result: &result, output: output, stderr: stderr}
+		if err := run.observeGDB(debugger, exe, input, temp, source); err != nil {
+			finishError(err)
+		}
+		return
+	}
 	d, err := openAdapter(debugger, dir)
 	if err != nil {
 		finishError(err)
@@ -142,7 +228,7 @@ func (Engine) Run(ctx context.Context, config observer.LaunchConfig) (result obs
 	}
 	result.Session.Backend = "lldb-dap"
 	defer func() {
-		result.CleanupError = d.close()
+		result.CleanupError = strings.TrimSpace(result.CleanupError + " " + d.close())
 		if result.Reason == observer.BackendFailed || result.Reason == observer.RequestTimedOut {
 			for _, entry := range []struct{ label, value string }{
 				{"LLDB console", d.console.String()},
@@ -163,11 +249,36 @@ func (Engine) Run(ctx context.Context, config observer.LaunchConfig) (result obs
 	}()
 
 	run := capture{adapter: d, ctx: ctx, limits: limits, dir: dir, files: files,
-		config: config, result: &result, output: output, stderr: stderr}
+		config: config, result: &result, output: output, stderr: stderr, identity: identity, index: index}
 	if err := run.observe(exe, input); err != nil {
 		finishError(err)
 	}
 	return
+}
+
+// Libraries must follow the object that references them on ELF linkers.
+func separateLibraries(args []string) (compile, libraries []string) {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if i+1 < len(args) {
+			switch arg {
+			case "-l", "-Xlinker":
+				libraries = append(libraries, arg, args[i+1])
+				i++
+				continue
+			case "-Xclang", "-Xpreprocessor", "-Xassembler", "-lto_library":
+				compile = append(compile, arg, args[i+1])
+				i++
+				continue
+			}
+		}
+		if strings.HasPrefix(arg, "-Wl,") || strings.HasPrefix(arg, "-l") && arg != "-load" && arg != "-lto_library" {
+			libraries = append(libraries, arg)
+		} else {
+			compile = append(compile, arg)
+		}
+	}
+	return compile, libraries
 }
 
 func tool(ctx context.Context, dir, override string, names ...string) (string, error) {
@@ -301,6 +412,8 @@ func readOutput(stdout, stderr string, limit int) (observer.OutputState, error) 
 }
 
 type capture struct {
+	identity mainIdentity
+	index    sourceIndex
 	*adapter
 	ctx            context.Context
 	limits         observer.Limits
@@ -352,7 +465,13 @@ func (c *capture) observe(exe, input string) error {
 	if !caps.FunctionBreakpoints {
 		return errors.New("LLDB does not support a breakpoint at main")
 	}
-	if err := c.ask("setFunctionBreakpoints", map[string]any{"breakpoints": []map[string]string{{"name": "main"}}}, nil); err != nil {
+	points := []map[string]string{{"name": "main"}}
+	for _, fn := range c.index.functions {
+		if fn.name != "main" && !c.skip(fn.file) {
+			points = append(points, map[string]string{"name": fn.name})
+		}
+	}
+	if err := c.ask("setFunctionBreakpoints", map[string]any{"breakpoints": points}, nil); err != nil {
 		return err
 	}
 	if err := c.keepLocations(); err != nil {
@@ -418,6 +537,13 @@ func (c *capture) observe(exe, input string) error {
 		command := "continue"
 		if visible {
 			command = "next"
+		} else {
+			for _, frame := range frames {
+				if frame.Location.File != "" && !c.skip(frame.Location.File) {
+					command = "stepOut"
+					break
+				}
+			}
 		}
 		if err := c.ask(command, map[string]any{"threadId": stop.ThreadID}, nil); err != nil {
 			return err
