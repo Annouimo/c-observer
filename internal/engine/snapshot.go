@@ -169,20 +169,31 @@ func (c *capture) snapshot(frames []stackFrame) (observer.Snapshot, error) {
 				if err != nil {
 					return snapshot, err
 				}
-				for i, raw := range vars {
+				var localNames map[string]int
+				if frame.IdentityReliable && name == "locals" {
+					localNames = make(map[string]int, len(vars))
+					for _, variable := range vars {
+						localNames[variableName(variable)]++
+					}
+				}
+				for i, variable := range vars {
 					if nodes == 0 {
 						frame.VariablesComplete = false
 						break
 					}
-					v, err := c.variable(raw, fmt.Sprintf("%s:%s:%d", frame.ID, name, i), variableName(raw), nil, 0, &nodes)
+					var declaration *observer.SourceLocation
+					if localNames != nil {
+						declaration = c.identity.inferDeclaration(variable, raw.Location, localNames[variable.Name])
+					}
+					v, err := c.variable(variable, fmt.Sprintf("%s:%s:%d", frame.ID, name, i), variableName(variable), declaration, 0, &nodes)
 					if err != nil {
 						return snapshot, err
 					}
 					if name == "arguments" {
 						v.Scope = observer.ParameterScope
 					}
-					if frame.IdentityReliable && name == "locals" {
-						c.identity.mark(&v, variableName(raw))
+					if localNames != nil {
+						c.identity.mark(&v, variableName(variable))
 					}
 					frame.Variables = append(frame.Variables, v)
 				}
@@ -303,6 +314,9 @@ func (c *capture) variable(raw dapVariable, id, path string, rootDeclaration *ob
 		v.Declaration = &loc
 	}
 	if depth == 0 {
+		if v.Declaration == nil {
+			v.Declaration = rootDeclaration
+		}
 		rootDeclaration = v.Declaration
 	}
 	isArray := false
