@@ -169,8 +169,37 @@ func (m Model) workspaceMode() bool {
 	}
 	return false
 }
+type menuAction struct {
+	key, label string
+}
+
+func (m Model) actions() []menuAction {
+	actions := []menuAction{{"c", "C 完整源码"}, {"i", "I 输入输出"}, {"j", "J 跳转快照"}, {"f", "F 筛选回放"}, {"s", "S 调用栈"}}
+	if m.focus == 1 && !m.replay.End() {
+		actions = append(actions, menuAction{"d", "D 数据详情"}, menuAction{"h", "H 变化历史"}, menuAction{"o", "O 对象操作"})
+	}
+	if m.record != nil && !m.offline && !m.demo {
+		actions = append(actions, menuAction{"w", "W 导出观察记录"})
+	}
+	if m.offline || m.demo {
+		actions = append(actions, menuAction{"r", "R 重置回放"})
+	} else {
+		actions = append(actions, menuAction{"r", "R 重新运行"})
+	}
+	if m.standalone {
+		actions = append(actions, menuAction{"e", "E 修改启动配置"})
+	}
+	return append(actions, menuAction{"q", "Q 退出"})
+}
+
 func (m Model) menuOptions() []string {
 	switch m.mode {
+	case "help":
+		var options []string
+		for _, a := range m.actions() {
+			options = append(options, a.label)
+		}
+		return options
 	case "filter":
 		return []string{"全部快照", "任意可靠数据变化", "当前选中变量变化", "当前选中源码行"}
 	case "object":
@@ -211,10 +240,8 @@ func (m *Model) handleWorkspace(msg tea.KeyMsg) tea.Cmd {
 		}
 		return nil
 	}
-	if m.mode == "help" {
-		if k == "enter" || k == "?" {
-			m.mode = ""
-		}
+	if m.mode == "help" && k == "?" {
+		m.mode = ""
 		return nil
 	}
 	if m.mode == "jump" || m.mode == "display-range" {
@@ -236,6 +263,12 @@ func (m *Model) handleWorkspace(msg tea.KeyMsg) tea.Cmd {
 			return nil
 		}
 		switch m.mode {
+		case "help":
+			action := m.actions()[m.menuCursor]
+			m.mode = ""
+			next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(action.key)})
+			*m = next.(Model)
+			return cmd
 		case "filter":
 			m.setFilter(m.menuCursor)
 		case "stack":
@@ -407,7 +440,7 @@ func isDigits(s string) bool {
 }
 
 func (m Model) workspaceOverlay(w, h int) string {
-	titles := map[string]string{"filter": "导航模式", "stack": "选择调用栈帧", "jump": "跳转快照", "help": "操作帮助", "object": "对象操作", "display-range": "展示范围", "record-confirm": "导出观察记录", "record-result": "导出结果"}
+	titles := map[string]string{"filter": "导航模式", "stack": "选择调用栈帧", "jump": "跳转快照", "help": "更多操作", "object": "对象操作", "display-range": "展示范围", "record-confirm": "导出观察记录", "record-result": "导出结果"}
 	lines := []string{accent.Render(clip("C Observer / "+titles[m.mode], w)), ""}
 	switch m.mode {
 	case "record-confirm":
@@ -436,6 +469,101 @@ func (m Model) workspaceOverlay(w, h int) string {
 			"值变化来自相邻已采集快照，不等于完整赋值日志。",
 		} {
 			lines = append(lines, clip(line, w))
+		}
+	case "jump":
+		lines = append(lines, clip(fmt.Sprintf("快照编号 (1..%d): %s▏", len(m.replay.Run.Snapshots), m.jumpInput), w))
+	case "display-range":
+		lines = append(lines, clip("只调整已采集内容的展示，不重新运行。", w))
+		labels := []string{"起始下标", "结束下标", "起始列", "结束列"}
+		if m.displayFields == 4 {
+			labels[0], labels[1] = "起始行", "结束行"
+		}
+		for i, name := range labels[:m.displayFields] {
+			mark := " "
+			if m.rangeField == i {
+				mark = ">"
+			}
+			lines = append(lines, clip(mark+" "+name+"  "+m.displayInput[i], w))
+		}
+	default:
+		options := m.menuOptions()
+		n := max(1, h-5)
+		start := max(0, min(m.menuCursor-n+1, max(0, len(options)-n)))
+		for i := start; i < min(len(options), start+n); i++ {
+			label := clip("  "+options[i], w)
+			if i == m.menuCursor {
+				label = selected.Render(clip("> "+options[i], w))
+			}
+			lines = append(lines, label)
+		}
+		if len(options) == 0 {
+			lines = append(lines, "无已记录项目")
+		}
+	}
+	if m.notice != "" {
+		lines = append(lines, warning.Render(clip(m.notice, w)))
+	}
+	lines = append(lines, muted.Render(clip("↑/↓ 或 Tab 选择  Enter 确认  Esc 返回", w)))
+	return fixed(lines, w, h)
+}
+
+func (m *Model) selectHistoryTarget() {
+	s := m.replay.Current()
+	if s == nil {
+		return
+	}
+	for frame := 0; frame < max(1, len(s.Frames)); frame++ {
+		r := m.replay
+		r.Frame = frame
+		all := r.Rows(nil)
+		row, ok := findRow(all, m.target.Key)
+		if !ok || !row.Reliable {
+			continue
+		}
+		m.replay.Frame = frame
+		for i, root := range rootRows(all) {
+			if row.Key == root.Key || strings.HasPrefix(row.Key, root.Key+"/") {
+				m.varCursor = i
+				break
+			}
+		}
+		return
+	}
+}
+
+// PreviewText renders the actual model without a terminal. It is restricted to
+// synthetic fixtures and useful for review/CI, never a substitute for native TUI tests.
+func (m Model) PreviewText(w, h, step int) (string, error) {
+	if !m.demo {
+		return "", fmt.Errorf("only synthetic previews can be dumped")
+	}
+	if w < 45 || w > 300 || h < 14 || h > 100 {
+		return "", fmt.Errorf("dump size must be 45..300 columns and 14..100 rows")
+	}
+	if !m.settingUp {
+		if step < 0 || step > len(m.replay.Run.Snapshots) {
+			return "", fmt.Errorf("invalid snapshot number")
+		}
+		if step == 0 {
+			m.seek(len(m.replay.Run.Snapshots))
+		} else {
+			m.seek(step - 1)
+		}
+	}
+	m.width, m.height = w, h
+	return m.View(), nil
+}	case "help":
+		lines = append(lines, muted.Render(clip("←/→ 回放 · ↑/↓ 选择 · Home/End 首尾 · Tab 切换", w)))
+		lines = append(lines, muted.Render(clip("变化基于相邻快照；≈ 表示相同预览。", w)))
+		options := m.menuOptions()
+		n := max(1, h-6)
+		start := max(0, min(m.menuCursor-n+1, max(0, len(options)-n)))
+		for i := start; i < min(len(options), start+n); i++ {
+			label := clip("  "+options[i], w)
+			if i == m.menuCursor {
+				label = selected.Render(clip("> "+options[i], w))
+			}
+			lines = append(lines, label)
 		}
 	case "jump":
 		lines = append(lines, clip(fmt.Sprintf("快照编号 (1..%d): %s▏", len(m.replay.Run.Snapshots), m.jumpInput), w))
