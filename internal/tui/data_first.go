@@ -99,6 +99,29 @@ func (m Model) measuredValue(path, value string) int {
 
 func (m Model) previewGroup(row VariableRow, all []VariableRow, title string) previewGroup {
 	table := m.dataTable(row, all)
+	// A collapsed string or aggregate cell may contain a reliably changed
+	// descendant even when its own display value is unchanged.
+	descendantChanges := map[string]bool{}
+	parents := map[string]string{}
+	for _, node := range all {
+		parents[node.Key] = node.Parent
+	}
+	for _, child := range all {
+		if !child.Changed {
+			continue
+		}
+		for key := child.Parent; key != "" && !descendantChanges[key]; key = parents[key] {
+			descendantChanges[key] = true
+		}
+	}
+	for i := range table.Rows {
+		for j := range table.Rows[i] {
+			c := &table.Rows[i][j]
+			if c.Key != "" && descendantChanges[c.Key] {
+				c.Changed = true
+			}
+		}
+	}
 	g := previewGroup{title: title, table: table, widths: make([]int, len(table.Headers))}
 	if row.Raw.Kind == observer.Array && !m.fullArrays[row.Key] {
 		g.table, g.folded = foldPreviewRows(table)
