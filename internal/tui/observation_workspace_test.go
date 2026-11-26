@@ -27,7 +27,6 @@ func TestStringWithChildrenChange(t *testing.T) {
 		t.Fatalf("string should be summarized once: %s", label)
 	}
 	for _, mutate := range []func(*observer.Variable){
-		func(v *observer.Variable) { v.IdentityReliable = false },
 		func(v *observer.Variable) { v.ValueTruncated = true },
 	} {
 		r := testRun(makeString("\"\"", "'\\0'", true), makeString("\"ling\"", "'l'", true))
@@ -35,7 +34,7 @@ func TestStringWithChildrenChange(t *testing.T) {
 		p := NewPreview(Fixture{Synthetic: true, Run: r})
 		p.seek(1)
 		if p.replay.Rows(nil)[0].Changed {
-			t.Fatal("reported unreliable or truncated string change")
+			t.Fatal("reported truncated string change")
 		}
 	}
 }
@@ -49,10 +48,7 @@ func TestComparisonCoverage(t *testing.T) {
 		run := testRun(makeScalar(reliable), makeScalar(reliable))
 		m := NewPreview(Fixture{Synthetic: true, Run: run})
 		m.seek(1)
-		want := "变化无法确认"
-		if reliable {
-			want = "已比较值无变化"
-		}
+		want := "无可见变化"
 		if got := m.comparisonSummary(80); !strings.Contains(got, want) {
 			t.Fatalf("reliable=%v: %s", reliable, got)
 		}
@@ -83,13 +79,13 @@ func TestCompactWorkspaceStreamsAndMenu(t *testing.T) {
 	run.Snapshots[1].OutputOffsets.StdoutBytes = len(run.Output.Stdout)
 	m := NewPreview(Fixture{Synthetic: true, Stdin: "  2\n1 2\n", Run: run})
 	m.seek(1)
-	if got := strings.Join(m.outputPreview(30, 2), "\n"); !strings.Contains(got, "+8B") || !strings.Contains(got, "  second") {
-		t.Fatalf("stdout delta: %q", got)
+	if got := strings.Join(m.outputPreview(30, 3), "\n"); !strings.Contains(got, "最终输出") || !strings.Contains(got, "  second") {
+		t.Fatalf("final stdout: %q", got)
 	}
 	for _, size := range [][2]int{{45, 14}, {60, 20}, {80, 24}, {120, 30}, {160, 40}} {
 		m.width, m.height = size[0], size[1]
 		view := m.View()
-		for _, want := range []string{"输入", "输出", "数据", "a", "  2", "  second"} {
+		for _, want := range []string{"输入", "输出", "数据", "a", "  2", "  first"} {
 			if !strings.Contains(view, want) {
 				t.Fatalf("%v missing %q:\n%s", size, want, view)
 			}

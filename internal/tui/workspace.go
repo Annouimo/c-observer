@@ -202,7 +202,7 @@ func (m Model) menuOptions() []string {
 		}
 		return options
 	case "filter":
-		return []string{"全部快照", "任意可靠数据变化", "当前选中变量变化", "当前选中源码行"}
+		return []string{"全部快照", "只看有变化的步骤", "当前变量历史变化", "当前选中源码行"}
 	case "object":
 		return []string{"查看数据详情", "查看变化历史", "仅导航此对象的变化", "切换自动范围 / 全部已采集", "手动设置展示范围", "调整采集范围并重跑"}
 	case "stack":
@@ -458,7 +458,8 @@ func (m Model) workspaceOverlay(w, h int) string {
 		return fixed(lines, w, h)
 	case "help":
 		lines = append(lines, muted.Render(clip("←/→ 回放 · ↑/↓ 选择 · Home/End 首尾 · Tab 切换", w)))
-		lines = append(lines, muted.Render(clip("变化基于相邻快照；≈ 表示相同预览。", w)))
+		lines = append(lines, muted.Render(clip("变化是相邻快照差异，不代表确切赋值。", w)))
+		lines = append(lines, muted.Render(clip("身份不明时按名称、类型、路径对应；≈ 表示相同预览。", w)))
 		options := m.menuOptions()
 		n := max(1, h-6)
 		start := max(0, min(m.menuCursor-n+1, max(0, len(options)-n)))

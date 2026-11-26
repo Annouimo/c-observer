@@ -49,10 +49,17 @@ func TestChanges(t *testing.T) {
 		t.Fatal("missing changed struct field")
 	}
 	r.Run.Snapshots[2].Frames[0].IdentityReliable = false
+	found = false
 	for _, row := range r.Rows(nil) {
-		if row.Changed {
-			t.Fatal("unreliable identity reported change")
+		if row.ReliableChange {
+			t.Fatal("unreliable identity entered strict history")
 		}
+		if row.Name == "score" && row.Changed {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("missing display difference")
 	}
 }
 func TestEmptyAndCancelled(t *testing.T) {

@@ -135,14 +135,64 @@ type VariableRow struct {
 	Key, Name, Type, Value, Detail, Before string
 	Depth                                  int
 	Changed, Expandable, Collapsed         bool
-	Reliable, Comparable                   bool
+	Reliable, Comparable, ReliableChange   bool
 	Path                                   string
 	Parent                                 string
 	Raw                                    observer.Variable
 }
 
-// Rows compares only against the chronologically previous snapshot. Unreliable
-// frames or ancestors suppress change claims, even if display names match.
+// A display correspondence is not a claim of continuous C object lifetime.
+// Prefer proven identity. Otherwise compare unique names/indices within a
+// compatible parent and frame; known conflicting declarations/IDs win.
+func correspondenceKey(v observer.Variable) string {
+	if v.Index != nil {
+		return fmt.Sprintf("index:%d", *v.Index)
+	}
+	return "name:" + v.Name
+}
+
+func compatibleObservation(a, b observer.Variable) bool {
+	if a.Kind != b.Kind || a.Type != b.Type {
+		return false
+	}
+	if a.Scope != "" && b.Scope != "" && a.Scope != b.Scope {
+		return false
+	}
+	if a.IdentityReliable && b.IdentityReliable && a.ID != b.ID {
+		return false
+	}
+	if a.Declaration != nil && b.Declaration != nil {
+		x, y := a.Declaration, b.Declaration
+		if x.File != "" && y.File != "" && x.File != y.File || x.Line > 0 && y.Line > 0 && x.Line != y.Line {
+			return false
+		}
+	}
+	return true
+}
+
+func compatibleFrames(current, previous []observer.Frame, depth int) bool {
+	if len(current) != len(previous) || depth >= len(previous) {
+		return false
+	}
+	if current[depth].Location.Function == "" || current[depth].Location.File == "" {
+		return false
+	}
+	for i := depth; i < len(current); i++ {
+		a, b := current[i], previous[i]
+		if a.Location.Function != b.Location.Function || a.Location.File != b.Location.File ||
+			a.IdentityReliable && b.IdentityReliable && a.ID != b.ID {
+			return false
+		}
+		// A different caller position is evidence against correspondence.
+		if i > depth && a.Location.Line != b.Location.Line {
+			return false
+		}
+	}
+	return true
+}
+
+// Rows compares adjacent observed states. ReliableChange is reserved for
+// object history and automatic focusing; Changed also includes display matches.
 func (r Replay) Rows(collapsed map[string]bool) []VariableRow {
 	s := r.Current()
 	if s == nil {
@@ -153,7 +203,15 @@ func (r Replay) Rows(collapsed map[string]bool) []VariableRow {
 	var walk func([]observer.Variable, []observer.Variable, string, string, int, bool, bool)
 	walk = func(vars, old []observer.Variable, parent, path string, depth int, reliable, identity bool) {
 		oldByID := make(map[string]observer.Variable)
+		oldByName := make(map[string]observer.Variable)
+		oldCounts, counts := map[string]int{}, map[string]int{}
+		for _, v := range vars {
+			counts[correspondenceKey(v)]++
+		}
 		for _, v := range old {
+			k := correspondenceKey(v)
+			oldByName[k] = v
+			oldCounts[k]++
 			if v.ID != "" && v.IdentityReliable {
 				oldByID[v.ID] = v
 			}
@@ -173,7 +231,15 @@ func (r Replay) Rows(collapsed map[string]bool) []VariableRow {
 				}
 			}
 			o, ok := oldByID[v.ID]
-			match := reliable && v.ID != "" && v.IdentityReliable && ok && o.Kind == v.Kind && o.Type == v.Type
+			strict := reliable && v.ID != "" && v.IdentityReliable && ok && o.Kind == v.Kind && o.Type == v.Type
+			match := strict
+			if !match {
+				k := correspondenceKey(v)
+				if counts[k] == 1 && oldCounts[k] == 1 && (v.Name != "" || v.Index != nil) {
+					o = oldByName[k]
+					match = compatibleObservation(v, o)
+				}
+			}
 			row := VariableRow{Key: key, Name: SafeText(v.Name, false), Type: SafeText(v.Type, false), Depth: depth, Raw: v, Path: objectPath, Parent: parent, Reliable: stable}
 			if v.Index != nil {
 				row.Name = fmt.Sprintf("[%d]", *v.Index)
@@ -214,6 +280,7 @@ func (r Replay) Rows(collapsed map[string]bool) []VariableRow {
 				(v.Kind == observer.String || (len(v.Children) == 0 && len(o.Children) == 0 &&
 					(v.Kind == observer.Scalar || v.Kind == observer.Pointer)))
 			row.Changed = row.Comparable && v.Value != o.Value
+			row.ReliableChange = strict && row.Changed
 			if row.Changed {
 				row.Before = SafeText(o.Value, false)
 				if v.Kind == observer.String && o.Value == "" {
@@ -228,10 +295,10 @@ func (r Replay) Rows(collapsed map[string]bool) []VariableRow {
 			rows = append(rows, row)
 			if row.Expandable && !row.Collapsed {
 				var oldChildren []observer.Variable
-				if match {
+				if match && v.Status == observer.Observed && o.Status == observer.Observed {
 					oldChildren = o.Children
 				}
-				walk(v.Children, oldChildren, key, objectPath, depth+1, match && v.Status == observer.Observed && o.Status == observer.Observed, stable)
+				walk(v.Children, oldChildren, key, objectPath, depth+1, strict && v.Status == observer.Observed && o.Status == observer.Observed, stable)
 			}
 		}
 	}
@@ -250,6 +317,9 @@ func (r Replay) Rows(collapsed map[string]bool) []VariableRow {
 					break
 				}
 			}
+		}
+		if !reliable && p != nil && compatibleFrames(s.Frames, p.Frames, i) {
+			old = p.Frames[i].Variables
 		}
 		walk(frame.Variables, old, fmt.Sprintf("frame:%q", frame.ID), "", 0, reliable, frame.ID != "" && frame.IdentityReliable)
 	}

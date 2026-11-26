@@ -78,7 +78,6 @@ type previewGroup struct {
 }
 
 type observationBlock struct {
-	rangeText            string
 	title                string
 	groups               []previewGroup
 	minWidth, idealWidth int
@@ -192,9 +191,6 @@ func (m Model) makeBlock(row VariableRow, all []VariableRow, w int, active bool)
 		prefix = ">"
 	}
 	name := prefix + row.Name
-	if row.Parent == "globals" {
-		name += "⁺"
-	}
 	b := observationBlock{title: name}
 	if !aggregate(row) || row.Raw.Status != observer.Observed {
 		value := row.Value
@@ -207,13 +203,9 @@ func (m Model) makeBlock(row VariableRow, all []VariableRow, w int, active bool)
 		return b
 	}
 	b.aggregate = true
-	b.rangeText = m.rangeLabel(row)
-	b.title = name + fmt.Sprintf(" · %d", len(row.Raw.Children))
+	b.title = name
 	if row.Raw.ArrayLength != nil {
-		b.title = fmt.Sprintf("%s[%d] · 已采%d", name, *row.Raw.ArrayLength, len(row.Raw.Children))
-	}
-	if !row.Raw.ChildrenComplete && row.Raw.ArrayLength == nil {
-		b.title += " · 不完整"
+		b.title = fmt.Sprintf("%s[%d]", name, *row.Raw.ArrayLength)
 	}
 	b.minWidth = min(w, max(16, min(26, cellWidth(b.title))))
 	b.idealWidth = min(w, max(b.minWidth, cellWidth(b.title)))
@@ -406,7 +398,7 @@ func (m Model) dataFirstPanel(w, h int) string {
 	}
 	budget := max(1, h-1)
 	current := m.replay.Current()
-	if len(current.Globals) > 0 || m.replay.Frame > 0 || !current.GlobalsComplete && m.replay.Run.Session.Capabilities.Globals ||
+	if m.replay.Frame > 0 || !current.GlobalsComplete && m.replay.Run.Session.Capabilities.Globals ||
 		m.replay.Frame < len(current.Frames) && !current.Frames[m.replay.Frame].VariablesComplete {
 		budget = max(1, budget-1)
 	}
@@ -429,10 +421,6 @@ func (m Model) dataFirstPanel(w, h int) string {
 					title = changed.Render(title)
 				}
 				lines := []previewLine{{text: title}}
-				if b.rangeText != "" {
-					label, _, _ := strings.Cut(b.rangeText, " · ")
-					lines = append(lines, previewLine{text: muted.Render(clip(label, width))})
-				}
 				horizontal = horizontal || cellWidth(b.title) > width
 				for _, g := range b.groups {
 					extra, hidden := g.render(width)
@@ -467,17 +455,16 @@ func (m Model) dataFirstPanel(w, h int) string {
 		}
 	}
 	label := ""
-	if len(m.replay.Current().Globals) > 0 {
-		label += " · ⁺ 全局/静态"
-	}
 	if m.replay.Frame > 0 {
 		label += fmt.Sprintf(" · 栈帧 #%d", m.replay.Frame)
 	}
 	if !m.replay.Current().GlobalsComplete && m.replay.Run.Session.Capabilities.Globals {
-		label += " · 部分全局"
+		label += " · 部分变量未记录"
 	}
 	if frame := m.replay.Frame; frame < len(m.replay.Current().Frames) && !m.replay.Current().Frames[frame].VariablesComplete {
-		label += " · 部分局部"
+		if !strings.Contains(label, "部分变量未记录") {
+			label += " · 部分变量未记录"
+		}
 	}
 	var lines []string
 	if label != "" {
@@ -503,23 +490,20 @@ func (m Model) dataFirstPanel(w, h int) string {
 		}
 	}
 	folded := false
+	for _, r := range roots {
+		hidden = hidden || aggregate(r) && !r.Raw.ChildrenComplete
+	}
 	for _, b := range blocks {
 		for _, g := range b.groups {
 			folded = folded || g.folded
 		}
 	}
 	if hidden || folded {
-		hint := "… 其余已采集内容见详情"
+		hint := "… Enter 查看更多"
 		if offscreen {
-			hint = "↑/↓ 浏览其余对象 · D 详情"
+			hint = "↑/↓ 查看其他变量"
 		}
-		if folded {
-			if hidden {
-				hint = "≈ 同预览 · " + hint
-			} else {
-				hint = "≈ 相同预览 · Enter 展开已采集内容"
-			}
-		}
+		
 		lines = append(lines, muted.Render(clip(hint, w)))
 	}
 	return fixed(lines, w, h)

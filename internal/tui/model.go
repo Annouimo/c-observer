@@ -166,6 +166,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.focus = 0
 		case "i":
 			m.focus = 2
+			m.consoleTab = 1
+			if m.config.ExpectedStdout != nil {
+				m.consoleTab = 4
+			}
+			m.consoleScroll = 0
 		case "f":
 			m.mode = "filter"
 			m.menuCursor = 0
@@ -282,7 +287,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.menuCursor = m.replay.Frame
 			}
 			if m.focus == 2 {
-				m.consoleTab = (m.consoleTab + 1) % 5
+				m.consoleTab = (m.consoleTab + 1) % 6
 				m.consoleScroll = 0
 			}
 		}
@@ -446,7 +451,7 @@ func (m Model) source(w, h int) string {
 }
 func (m Model) consoleText() string { return m.consoleTextFor(m.consoleTab) }
 func (m Model) consoleTextFor(tab int) string {
-	out, errOut := m.replay.Output()
+	out, errOut := m.replay.Run.Output.Stdout, m.replay.Run.Output.Stderr
 	var data string
 	switch tab {
 	case 0:
@@ -455,6 +460,9 @@ func (m Model) consoleTextFor(tab int) string {
 		data = string(out)
 	case 2:
 		data = string(errOut)
+	case 5:
+		prefix, _ := m.replay.Output()
+		data = string(prefix)
 	case 3:
 		if m.config.ExpectedStdout != nil {
 			data = string(*m.config.ExpectedStdout)
@@ -465,7 +473,7 @@ func (m Model) consoleTextFor(tab int) string {
 	if data == "" {
 		data = "（空）"
 	}
-	if tab == 1 && m.replay.Run.Output.StdoutTruncated || tab == 2 && m.replay.Run.Output.StderrTruncated {
+	if (tab == 1 || tab == 5) && m.replay.Run.Output.StdoutTruncated || tab == 2 && m.replay.Run.Output.StderrTruncated {
 		data += "\n[运行输出已截断]"
 	}
 	return SafeText(data, true)
@@ -482,7 +490,7 @@ func (m Model) consoleView(tab, w, h, scroll int, focused bool) string {
 		m.consoleScroll = scroll
 		return m.outputComparison(w, h)
 	}
-	labels := []string{"输入", "实际输出", "错误流", "预期输出"}
+	labels := []string{"输入", "最终输出", "错误输出", "预期输出", "输出对照", "当前步骤已记录输出"}
 	lines := []string{head(" "+labels[tab], focused, w)}
 	a := m.consoleLines(tab, w)
 	start := max(0, min(scroll, max(0, len(a)-1)))
@@ -596,10 +604,7 @@ func (m Model) View() string {
 		help = "Home/End 首尾  R 重置  Q 退出"
 	}
 	if m.focus == 1 && !m.replay.End() {
-		help = "Enter 详情  C 源码  I 输入输出  ? 更多"
-		if m.record != nil && !m.offline && !m.demo {
-			help = "Enter 详情  W 导出记录  ? 更多"
-		}
+		help = "Enter 详情  I 输入输出  C 源码  ? 更多"
 	}
 	if m.focus == 2 {
 		help = "Enter 切换输入输出  Esc 返回数据  ? 帮助"
@@ -611,7 +616,7 @@ func (m Model) View() string {
 		help += "  E 修改配置"
 	}
 	if m.replay.End() && m.record != nil && !m.offline && !m.demo {
-		help = "W 导出记录  I 输入输出  R 重跑  Q 退出"
+		help = "I 输入输出  ? 更多  R 重跑  Q 退出"
 	}
 	if m.notice != "" {
 		help = m.notice
@@ -619,6 +624,9 @@ func (m Model) View() string {
 	runHint := "R 重跑"
 	if m.demo || m.offline {
 		runHint = "R 重置"
+	}
+	if result := m.sampleStatus(); result != "" {
+		title = clip(title, max(1, w-cellWidth(result)-3)) + " · " + result
 	}
 	return accent.Render(clip(title, w)) + "\n" + body + "\n" + muted.Render(clip(pos, w)) + "\n" + muted.Render(clip("←/→ 回放  ↑/↓ 选择  "+runHint+"  Q 退出", w)) + "\n" + muted.Render(clip(help, w))
 }

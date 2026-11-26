@@ -211,7 +211,7 @@ func TestManualMatrixRange(t *testing.T) {
 func TestActualPreviewText(t *testing.T) {
 	m := NewPreview(fixture(t, "adaptive-array"))
 	s, err := m.PreviewText(100, 26, 6)
-	if err != nil || !strings.Contains(s, "自动关注 0..6") || !strings.Contains(s, "合成数据预览") {
+	if err != nil || strings.Contains(s, "自动关注") || !strings.Contains(s, "合成数据预览") {
 		t.Fatalf("preview: %v %s", err, s)
 	}
 	s, err = m.PreviewText(100, 26, 0)

@@ -3,89 +3,39 @@ package tui
 import (
 	"fmt"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/Routilet/c-observer/internal/observer"
 )
 
-// comparisonSummary never treats a missing identity or a partial capture as
-// evidence of unchanged data. The scope is the currently viewed frame.
+// Summary reports visible differences, not proven assignment events.
 func (m Model) comparisonSummary(w int) string {
 	if !m.replay.Step().HasInterval() {
-		return muted.Render(clip("观察起点", w))
+		return ""
 	}
-	rows := m.replay.Rows(nil)
 	var labels []string
-	unknown, compared, count := false, false, 0
 	changedStrings := map[string]bool{}
-	for _, row := range rows {
-		if row.Raw.Kind == observer.Array || row.Raw.Kind == observer.Struct {
-			unknown = unknown || !row.Raw.ChildrenComplete || !row.Reliable || row.Raw.Status != observer.Observed
-		} else {
-			compared = compared || row.Comparable
-			unknown = unknown || !row.Comparable || row.Raw.Kind == observer.String && len(row.Raw.Children) > 0 && !row.Raw.ChildrenComplete
-		}
-		if !row.Changed {
-			continue
-		}
-		// Summarize a logical string once, while retaining its changed
-		// character children in the detail view and history.
-		if changedStrings[row.Parent] {
+	for _, row := range m.replay.Rows(nil) {
+		if !row.Changed || changedStrings[row.Parent] {
 			continue
 		}
 		if row.Raw.Kind == observer.String {
 			changedStrings[row.Key] = true
 		}
-		count++
 		labels = append(labels, SafeText(row.Path, false)+": "+row.Before+" → "+row.Value)
 	}
-	for _, s := range []*observer.Snapshot{m.replay.Current(), m.replay.Previous()} {
-		if s == nil {
-			continue
-		}
-		if m.replay.Frame >= len(s.Frames) || !s.Frames[m.replay.Frame].VariablesComplete {
-			unknown = true
-		}
-		if m.replay.Run.Session.Capabilities.Globals && !s.GlobalsComplete {
-			unknown = true
-		}
-	}
-	// Objects disappearing from a capture are not proof of unchanged data.
-	old := m.replay
-	old.Seek(old.Position - 1)
-	keys := map[string]bool{}
-	for _, row := range rows {
-		keys[row.Key] = true
-	}
-	for _, row := range old.Rows(nil) {
-		if !keys[row.Key] || (row.Raw.Kind == observer.Array || row.Raw.Kind == observer.Struct) && !row.Raw.ChildrenComplete {
-			unknown = true
-		}
-	}
-	if count == 0 {
-		switch {
-		case !compared:
-			return muted.Render(clip("变化无法确认", w))
-		case unknown:
-			return muted.Render(clip("已比较值无变化 · 部分无法比较", w))
-		default:
-			return muted.Render(clip("已比较值无变化", w))
-		}
-	}
-	suffix := ""
-	if unknown {
-		suffix = " · 比较受限"
+	if len(labels) == 0 {
+		return muted.Render(clip("无可见变化", w))
 	}
 	for n := min(2, len(labels)); n > 0; n-- {
 		label := strings.Join(labels[:n], "；")
-		if count > n {
-			label += fmt.Sprintf(" +%d项", count-n)
+		if len(labels) > n {
+			label += fmt.Sprintf(" +%d项", len(labels)-n)
 		}
-		if cellWidth(label+suffix) <= w {
-			return changed.Render(label) + muted.Render(suffix)
+		if cellWidth(label) <= w {
+			return changed.Render(label)
 		}
 	}
-	return changed.Render(clip(fmt.Sprintf("%d 项变化", count), w)) + muted.Render(clip(suffix, max(0, w-cellWidth(fmt.Sprintf("%d 项变化", count)))))
+	return changed.Render(clip(fmt.Sprintf("%d 项变化", len(labels)), w))
 }
 
 func panel(title string, lines []string, w, h int) string {
@@ -106,70 +56,31 @@ func panel(title string, lines []string, w, h int) string {
 }
 
 func (m Model) outputPreview(w, h int) []string {
-	out, errOut := m.replay.Output()
-	before := 0
-	if p := m.replay.Previous(); p != nil {
-		before = p.OutputOffsets.StdoutBytes
-	}
-	// The first pause is a baseline, not an observed transition.
-	if !m.replay.Step().HasInterval() {
-		before = len(out)
-	}
-	before = max(0, min(before, len(out)))
-	label := "输出"
-	if len(out) > before {
-		label += fmt.Sprintf(" +%dB", len(out)-before)
-	}
-	if len(errOut) > 0 {
-		label += " · stderr"
-	}
-	if m.replay.Run.Output.StdoutTruncated {
-		label += " · 截断"
+	out := m.replay.Run.Output.Stdout
+	label := "最终输出"
+	if m.replay.Run.Reason != observer.Exited || m.replay.Run.Output.StdoutTruncated {
+		label = "已记录输出"
 	}
 	lines := []string{accent.Render(clip(label, w))}
 	if len(out) == 0 {
-		return append(lines, muted.Render(clip("尚无已捕获输出", w)))
+		return append(lines, muted.Render(clip("（空）", w)))
 	}
-	// Tail preview, retaining spaces and marking only bytes actually added
-	// between snapshots. A UTF-8 rune crossing an offset is marked as a whole.
-	text := string(out)
-	parts := strings.Split(text, "\n")
+	parts := strings.Split(SafeText(strings.ReplaceAll(string(out), "\r\n", "\n"), true), "\n")
 	if len(parts) > 1 && parts[len(parts)-1] == "" {
 		parts = parts[:len(parts)-1]
 	}
-	start := max(0, len(parts)-max(1, h-1))
-	offset := 0
-	for i, line := range parts {
-		if i >= start {
-			// Hide CR only when it belongs to a CRLF line ending.
-			display := line
-			if offset+len(line) < len(text) {
-				display = strings.TrimSuffix(display, "\r")
-			}
-			var b strings.Builder
-			width := 0
-			for j, r := range display {
-				piece := SafeText(string(r), false)
-				_, n := utf8.DecodeRuneInString(display[j:])
-				if width+cellWidth(piece) > w {
-					break
-				}
-				if offset+j+n > before {
-					b.WriteString(changed.Render(piece))
-				} else {
-					b.WriteString(piece)
-				}
-				width += cellWidth(piece)
-			}
-			lines = append(lines, b.String())
+	limit := max(1, h-1)
+	for i, line := range parts[:min(limit, len(parts))] {
+		if cellWidth(line) > w || i == limit-1 && len(parts) > limit {
+			line = clip(line, max(0, w-2)) + " …"
 		}
-		offset += len(line) + 1
+		lines = append(lines, clip(line, w))
 	}
 	return lines
 }
 
 func (m Model) inputPreview(w, h int) []string {
-	lines := []string{accent.Render(clip("输入 · 样例", w))}
+	lines := []string{accent.Render(clip("输入", w))}
 	if len(m.config.Stdin) == 0 {
 		return append(lines, muted.Render("（空）"))
 	}
@@ -203,7 +114,7 @@ func (m Model) observationWorkspace(w, h int) string {
 	if w >= 76 && topH >= 7 {
 		left := w * 3 / 5
 		right := w - left
-		source := panel("执行 · 区间", m.executionContext(left-2), left, topH)
+		source := panel("代码", m.executionContext(left-2), left, topH)
 		inner := topH - 2
 		inH := inner / 2
 		io := strings.Split(fixed(m.inputPreview(right-2, inH), right-2, inH), "\n")
@@ -228,9 +139,9 @@ func (m Model) observationWorkspace(w, h int) string {
 		}
 		lines = append(lines, context[current], context[len(context)-1])
 		in, out := m.inputPreview(w-8, 2), m.outputPreview(w-8, 2)
-		lines = append(lines, accent.Render("输入 ")+in[1], accent.Render("输出 ")+out[1])
+		lines = append(lines, accent.Render("输入 ")+in[1], out[0]+" "+out[1])
 
-		top = panel("执行 / 输入输出", lines, w, topH)
+		top = panel("代码 / 输入输出", lines, w, topH)
 	}
 	dataH := h - topH
 	data := strings.Split(m.dataFirstPanel(w-2, dataH-2), "\n")
