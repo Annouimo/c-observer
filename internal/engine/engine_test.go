@@ -1,4 +1,4 @@
-//go:build darwin || linux
+//go:build darwin || linux || windows
 
 package engine
 
@@ -10,7 +10,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -19,7 +18,7 @@ import (
 
 func realConfig(t *testing.T) observer.LaunchConfig {
 	t.Helper()
-	if os.Getenv("C_OBSERVER_REAL_DEBUGGER") != "1" && os.Getenv("C_OBSERVER_REAL_GDB") != "1" {
+	if os.Getenv("C_OBSERVER_REAL_GDB") != "1" && (runtime.GOOS == "windows" || os.Getenv("C_OBSERVER_REAL_DEBUGGER") != "1") {
 		t.Skip("set C_OBSERVER_REAL_DEBUGGER=1 to run LLDB against real C programs")
 	}
 	dir := filepath.Join(t.TempDir(), "课程 sample")
@@ -30,7 +29,11 @@ func realConfig(t *testing.T) observer.LaunchConfig {
 	if err != nil {
 		t.Fatal(err)
 	}
-	source := filepath.Join(dir, "student program.c")
+	name := "student program.c"
+	if runtime.GOOS == "windows" {
+		name = "学生 源码.c"
+	}
+	source := filepath.Join(dir, name)
 	if err := os.WriteFile(source, data, 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +66,7 @@ func TestRealObservation(t *testing.T) {
 		t.Fatalf("run ended with %s: %s (cleanup: %s, diagnostics: %+v, snapshots: %d)",
 			result.Reason, result.Message, result.CleanupError, result.Diagnostics, len(result.Snapshots))
 	}
-	if string(result.Output.Stdout) != "Ada:29:1\n" || string(result.Output.Stderr) != "done\n" {
+	if string(result.Output.Stdout) != testOutput("Ada:29:1\n") || string(result.Output.Stderr) != testOutput("done\n") {
 		t.Fatalf("unexpected output: %+v", result.Output)
 	}
 	callback, before, after := false, false, false
@@ -150,9 +153,12 @@ func TestRealFailureAndStop(t *testing.T) {
 		config.Stdin = []byte("spin 0\n")
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
+		pidPath := filepath.Join(config.WorkDir, "inferior.pid")
+		if err := os.Remove(pidPath); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
 		done := make(chan observer.RunResult, 1)
 		go func() { done <- realEngine().Run(ctx, config) }()
-		pidPath := filepath.Join(config.WorkDir, "inferior.pid")
 		deadline := time.NewTimer(8 * time.Second)
 		defer deadline.Stop()
 		ticker := time.NewTicker(10 * time.Millisecond)
@@ -178,7 +184,7 @@ func TestRealFailureAndStop(t *testing.T) {
 				t.Fatalf("unexpected cancellation result: %s %s cleanup %s, %d snapshots",
 					result.Reason, result.Message, result.CleanupError, len(result.Snapshots))
 			}
-			if err := syscall.Kill(pid, 0); err != syscall.ESRCH {
+			if err := verifyInferiorExited(pid); err != nil {
 				t.Fatalf("inferior %d after cancellation: %v", pid, err)
 			}
 		case <-time.After(3 * time.Second):
@@ -337,7 +343,7 @@ func TestRealMappedLineAndNonzeroExit(t *testing.T) {
 	config.KeepLocations, config.ArrayRanges = nil, nil
 	result := realEngine().Run(context.Background(), config)
 	if result.Reason != observer.NonzeroExit || result.ExitCode == nil || *result.ExitCode != 7 ||
-		string(result.Output.Stdout) != "mapped\n" || result.CleanupError != "" {
+		string(result.Output.Stdout) != testOutput("mapped\n") || result.CleanupError != "" {
 		t.Fatalf("unexpected result: %s %s, exit=%v, stdout=%q, cleanup=%q",
 			result.Reason, result.Message, result.ExitCode, result.Output.Stdout, result.CleanupError)
 	}
@@ -347,4 +353,11 @@ func TestRealMappedLineAndNonzeroExit(t *testing.T) {
 		}
 	}
 	t.Fatalf("did not observe the mapped source line: %+v", result.Snapshots)
+}
+
+func testOutput(text string) string {
+	if runtime.GOOS == "windows" {
+		return strings.ReplaceAll(text, "\n", "\r\n")
+	}
+	return text
 }

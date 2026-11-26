@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	_ "embed"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -27,22 +29,23 @@ type miLine struct {
 }
 
 type gdbMI struct {
-	running bool
-	cmd     *exec.Cmd
-	in      io.WriteCloser
-	out     io.ReadCloser
-	lines   chan miLine
-	done    chan struct{}
-	stops   []string
-	seq     int
-	console string
-	stderr  *cappedBuffer
+	running        bool
+	cmd            *exec.Cmd
+	in             io.WriteCloser
+	out            io.ReadCloser
+	lines          chan miLine
+	done           chan struct{}
+	stops          []string
+	seq            int
+	console        string
+	stderr         *cappedBuffer
+	stopProcess    func() error
+	releaseProcess func() error
 }
 
 func startMI(path, dir string) (*gdbMI, error) {
 	cmd := exec.Command(path, "-nx", "-q", "--interpreter=mi2")
 	cmd.Dir = dir
-	configureProcess(cmd)
 	stderr := &cappedBuffer{limit: 8192}
 	cmd.Stderr = stderr
 	cmd.WaitDelay = cleanupTimeout / 2
@@ -55,12 +58,14 @@ func startMI(path, dir string) (*gdbMI, error) {
 		in.Close()
 		return nil, err
 	}
-	if err := cmd.Start(); err != nil {
+	stopProcess, releaseProcess, err := startManagedProcess(cmd)
+	if err != nil {
 		in.Close()
 		out.Close()
 		return nil, err
 	}
-	m := &gdbMI{cmd: cmd, in: in, out: out, lines: make(chan miLine), done: make(chan struct{}), stderr: stderr}
+	m := &gdbMI{cmd: cmd, in: in, out: out, lines: make(chan miLine), done: make(chan struct{}), stderr: stderr,
+		stopProcess: stopProcess, releaseProcess: releaseProcess}
 	go func() {
 		defer close(m.lines)
 		r := bufio.NewScanner(out)
@@ -106,7 +111,11 @@ func (m *gdbMI) request(ctx context.Context, command string) error {
 			_ = pipe.SetWriteDeadline(deadline)
 		}
 	}
-	if _, err := fmt.Fprintln(m.in, token+command); err != nil {
+	encoded, err := encodeMI(token + command + "\n")
+	if err != nil {
+		return err
+	}
+	if _, err := m.in.Write(encoded); err != nil {
 		if errors.Is(err, os.ErrDeadlineExceeded) {
 			return context.DeadlineExceeded
 		}
@@ -154,7 +163,12 @@ func (m *gdbMI) stop(ctx context.Context) (string, error) {
 	}
 }
 
-func (m *gdbMI) close() string {
+func (m *gdbMI) close() (message string) {
+	defer func() {
+		if err := m.releaseProcess(); err != nil {
+			message = strings.TrimSpace(message + " " + err.Error())
+		}
+	}()
 	ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout/2)
 	defer cancel()
 	// An interrupted request can still reply. Finish the inferior before exiting GDB.
@@ -174,7 +188,7 @@ func (m *gdbMI) close() string {
 			err = errors.Join(err, waitErr)
 		}
 	case <-ctx.Done():
-		killErr := killProcessGroup(m.cmd)
+		killErr := m.stopProcess()
 		select {
 		case <-wait:
 		case <-time.After(cleanupTimeout / 2):
@@ -213,7 +227,7 @@ func (c *capture) observeGDB(debugger, exe, input, temp, source string) error {
 	}
 	c.result.Session.Backend = "gdb-mi"
 	defer func() {
-		c.result.CleanupError = m.close()
+		c.result.CleanupError = strings.TrimSpace(c.result.CleanupError + " " + m.close())
 		state, err := readOutput(c.output, c.stderr, c.limits.MaxOutputBytes)
 		c.result.Output = state
 		if err != nil {
@@ -240,10 +254,13 @@ func (c *capture) observeGDB(debugger, exe, input, temp, source string) error {
 			opts.Files = append(opts.Files, file.Path)
 		}
 	}
-	init := "python exec(compile(open(" + quotedJSON(script) + ", encoding='utf-8').read(), " + quotedJSON(script) + ", 'exec')); observer_init(" + quotedJSON(quotedJSON(opts)) + ")"
-	for _, cmd := range []string{"-gdb-set confirm off", "-gdb-set disable-randomization off",
-		"-gdb-set mi-async on", "-gdb-set backtrace past-main on", "-gdb-set auto-load off", "-gdb-set debuginfod enabled off", "-gdb-set print elements 16",
-		"-file-exec-and-symbols " + strconv.Quote(exe), miConsole(init)} {
+	init := "python exec(compile(open(" + strconv.QuoteToASCII(script) + ", encoding='utf-8').read(), " + strconv.QuoteToASCII(script) + ", 'exec')); observer_init(__import__('base64').b64decode(" + strconv.Quote(base64.StdEncoding.EncodeToString([]byte(quotedJSON(opts)))) + ").decode('utf-8'))"
+	settings := []string{"-gdb-set confirm off", "-gdb-set mi-async on", "-gdb-set backtrace past-main on", "-gdb-set auto-load off", "-gdb-set print elements 16"}
+	if runtime.GOOS == "linux" {
+		settings = append(settings, "-gdb-set disable-randomization off", "-gdb-set debuginfod enabled off")
+	}
+	settings = append(settings, "-file-exec-and-symbols "+strconv.Quote(filepath.ToSlash(exe)), miConsole(init))
+	for _, cmd := range settings {
 		if err := request(cmd); err != nil {
 			return err
 		}
@@ -258,7 +275,11 @@ func (c *capture) observeGDB(debugger, exe, input, temp, source string) error {
 		}
 	}
 	c.result.Session.Capabilities.ExplicitStops = true
-	if err := request("-exec-arguments < " + shellPath(input) + " > " + shellPath(c.output) + " 2> " + shellPath(c.stderr)); err != nil {
+	redirectPath := shellPath
+	if runtime.GOOS == "windows" {
+		redirectPath = func(path string) string { return `"` + filepath.ToSlash(path) + `"` }
+	}
+	if err := request("-exec-arguments < " + redirectPath(input) + " > " + redirectPath(c.output) + " 2> " + redirectPath(c.stderr)); err != nil {
 		return err
 	}
 	if err := request("-exec-run"); err != nil {

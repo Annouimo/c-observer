@@ -2,7 +2,7 @@
 
 `engine.Engine` implements the shared `observer.Engine` contract using Clang and LLDB's DAP adapter. One call compiles local C, runs with preset stdin and returns a bounded replay history and separate stdout/stderr. The engine searches the selected Xcode toolchain via `xcrun` on macOS, then falls back to PATH. The launch configuration can override either executable.
 
-The engine sets entry breakpoints for function definitions in the primary C source, then uses source-level steps. This records direct calls and library-invoked user callbacks without manual stop locations. Clang source inspection is bounded and optional. When it cannot establish function locations, the engine still supports explicit source stops. It captures frame variables, C arrays and structure fields. An array range can select a page outside the default prefix. The engine matches simple outer-block variables in the original main invocation across stops using Clang declaration locations and a complete LLDB stack. It also retains identities for captured fields and array elements. Nested scopes, repeated loop locals, recursive/helper frames, ambiguous declarations, and mapped sources currently use snapshot-local identities. The engine classifies matched LLDB objects from the primary source as globals, file statics, or function statics. Their declaration identity is shared across frames, and each object appears at most once per snapshot. Global enumeration is partial because LLDB can expose different function statics at different stops. The shared RunResult also has a Linux GCC/GDB implementation, described below.
+The engine sets entry breakpoints for function definitions in the primary C source, then uses source-level steps. This records direct calls and library-invoked user callbacks without manual stop locations. Clang source inspection is bounded and optional. When it cannot establish function locations, the engine still supports explicit source stops. It captures frame variables, C arrays and structure fields. An array range can select a page outside the default prefix. The engine matches simple outer-block variables in the original main invocation across stops using Clang declaration locations and a complete LLDB stack. It also retains identities for captured fields and array elements. Nested scopes, repeated loop locals, recursive/helper frames, ambiguous declarations, and mapped sources currently use snapshot-local identities. The engine classifies matched LLDB objects from the primary source as globals, file statics, or function statics. Their declaration identity is shared across frames, and each object appears at most once per snapshot. Global enumeration is partial because LLDB can expose different function statics at different stops. The shared RunResult also has a GCC/GDB implementation, described below.
 
 ## Verification
 
@@ -18,7 +18,7 @@ Linux runtime was exercised with Clang and LLVM 19.1.7. The package cross-builds
 
 To export a real replay for frontend work, set `C_OBSERVER_RECORD` to an output path when running the opt-in `TestRealObservation`. The result includes platform, stdin and source snapshots and is marked non-synthetic.
 
-## GCC/GDB on Linux
+## GCC/GDB on Linux and Windows
 
 Use `engine.GDBEngine{}` through the same `observer.Engine` interface.
 Defaults are `gcc` and `gdb`; compiler and debugger overrides remain available.
@@ -38,5 +38,35 @@ array pages, user callbacks, recursion, scope boundaries, globals and statics,
 limits, abort, and cancellation with inferior PID verification. GDB identity
 is conservative for recursive frames and nested locals. Files not exposed by
 the selected debug symbols can be absent from snapshots. The GDB backend has
-been run on Linux with GCC 14.2 and GDB 16.3. Native Windows/MinGW and older GDB
-distributions still need separate verification.
+been run on Linux with GCC 14.2 and GDB 16.3. See below for native Windows verification.
+
+### Windows GDB verification
+
+Verified on Windows 11 x64 build 26200 with Go 1.26.5 and the Brecht Sanders
+native MinGW-w64 UCRT toolchain in `D:\Programs\mingw64\bin` (GCC 16.2.0,
+GDB 17.2, embedded Python 3.9.7, Windows ANSI code page 936).
+
+```powershell
+go test ./...
+$env:C_OBSERVER_REAL_GDB = '1'
+go test -count=1 -v ./internal/engine
+go vet ./...
+```
+
+The real suite covers Chinese characters and spaces in the source filename
+and working directory. It also passed with `TEMP` and `TMP` set to a directory
+named `观察 临时`. GCC uses an isolated ASCII build directory under the user's
+normal LocalAppData Temp in that case. The GDB sample redirection files still
+use the configured temporary directory. Paths passed to native GDB must be
+representable in the active Windows ANSI code page on this toolchain.
+
+The stdout and stderr prefixes retain the actual Windows CRLF bytes. The
+mapped-source fixture exits with status 7 and the crash fixture is classified
+as signaled. Cancellation preserved snapshots and the inferior PID had exited.
+A separate Windows Job Object test verified forced cleanup with real parent and
+descendant process handles. The compiler and GDB start suspended and join the
+job before resuming. If a host job prevents assignment, startup reports the
+Windows error and terminates the suspended process.
+
+MSYS2 UCRT64, incompatible IDE/CI job policies, and older Dev-C++ toolchains
+have yet to be exercised. The CLI still selects the default LLDB engine.

@@ -2,6 +2,7 @@
 import gdb
 import json
 import os
+import re
 
 _opts = {}
 _visible = set()
@@ -12,13 +13,44 @@ _started = False
 def _path(path):
     if not path:
         return ""
-    absolute = os.path.normpath(os.path.join(_opts["Directory"], path))
-    for key in (path, absolute, os.path.basename(path)):
-        mapped = (_opts["Map"] or {}).get(key)
-        if mapped:
-            return os.path.normpath(os.path.join(_opts["Directory"], mapped))
-    return absolute
+    paths = [path]
+    if os.name == "nt" and not path.isascii():
+        # Some GCC builds write UTF-8 DWARF names which GDB decodes as ANSI.
+        try:
+            paths.append(path.encode("mbcs").decode("utf-8"))
+        except UnicodeError:
+            pass
+    for candidate in paths:
+        absolute = os.path.normpath(os.path.join(_opts["Directory"], candidate))
+        for key in (candidate, absolute, os.path.basename(candidate)):
+            mapped = (_opts["Map"] or {}).get(key)
+            if mapped:
+                return os.path.normpath(os.path.join(_opts["Directory"], mapped))
+        if absolute in _visible:
+            return absolute
+    return os.path.normpath(os.path.join(_opts["Directory"], path))
 
+
+
+def _windows_function_breakpoints():
+    # On native Windows, rbreak can return no locations for a relative DWARF
+    # filename even though GDB has the source's function symbols.
+    visible = False
+    count = 0
+    for line in gdb.execute("info functions", to_string=True).splitlines():
+        if line.startswith("File ") and line.endswith(":"):
+            visible = _path(line[5:-1]) in _visible
+        elif line == "Non-debugging symbols:":
+            break
+        elif visible:
+            match = re.match(r"^\d+:\s+.*?\b([A-Za-z_][A-Za-z_0-9]*)\s*\(", line)
+            if match and match[1] != "main":
+                symbol = gdb.lookup_static_symbol(match[1]) or gdb.lookup_global_symbol(match[1])
+                if symbol and symbol.symtab and _path(symbol.symtab.fullname()) in _visible:
+                    gdb.Breakpoint(function=match[1], internal=True)
+                    count += 1
+                    if count >= 255:
+                        break
 
 def observer_init(options):
     global _opts, _visible
@@ -29,7 +61,11 @@ def observer_init(options):
         raise gdb.GdbError("No C main function with debug information")
     if _opts["Source"] in _visible:
         try:
-            gdb.rbreak(".*", minsyms=False, throttle=256, symtabs=[main.symtab])
+            if os.name == "nt":
+                gdb.Breakpoint("main", internal=True)
+                _windows_function_breakpoints()
+            elif not gdb.rbreak(".*", minsyms=False, throttle=256, symtabs=[main.symtab]):
+                gdb.Breakpoint("main", internal=True)
         except (gdb.error, RuntimeError):
             gdb.Breakpoint("main", internal=True)
     else:
