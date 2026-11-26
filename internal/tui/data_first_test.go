@@ -110,7 +110,7 @@ func TestDataFirstLongValueAndNestedDetails(t *testing.T) {
 	if !strings.Contains(m.View(), "123456789012345679") {
 		t.Fatal("wide numeric array values should be legible in the preview")
 	}
-	m.varCursor = 2
+	m.varCursor = 3
 	m = key(m, "d")
 	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = next.(Model)
@@ -124,7 +124,7 @@ func TestDataFirstLongValueAndNestedDetails(t *testing.T) {
 	}
 	m.mode = ""
 	m.seek(5)
-	m.varCursor = 0
+	m.varCursor = 1
 	if view := m.View(); !strings.Contains(view, "values") || !strings.Contains(view, "indices") {
 		t.Fatal("structure should preview both nested arrays")
 	}
