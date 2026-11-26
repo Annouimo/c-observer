@@ -1,8 +1,13 @@
 name: Prepare and publish Observer npm
 on:
+  push:
+    branches: [main]
+    paths: ['VERSION', '.github/workflows/publish-npm.yml', '.github/scripts/npm-release-state*.mjs']
   pull_request:
     branches: [main, feat/tui]
     paths:
+      - 'VERSION'
+      - '.github/scripts/npm-release-state*.mjs'
       - '.github/workflows/publish-npm.yml'
       - 'scripts/**'
       - 'LICENSE'
@@ -14,27 +19,83 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "DRY_RUN: private tarball; PUBLISH_NEXT: OIDC preview; PUBLISH_LATEST: OIDC stable"
+        description: "AUTO: publish new declared stable version; DRY_RUN: build only; PUBLISH_NEXT: explicit preview; PUBLISH_LATEST: stable retry"
         type: choice
-        default: DRY_RUN
+        default: AUTO
         required: true
-        options: [DRY_RUN, PUBLISH_NEXT, PUBLISH_LATEST]
+        options: [AUTO, DRY_RUN, PUBLISH_NEXT, PUBLISH_LATEST]
       version:
-        description: "Explicit stable version or prerelease, matching the publication mode"
-        required: true
+        description: "Optional VERSION override for dry run; required explicit prerelease for PUBLISH_NEXT; stable must match VERSION"
+        required: false
         type: string
-        default: '0.1.0'
+        default: ''
 permissions:
   contents: read
 concurrency:
   group: observer-npm-${{ github.ref }}
   cancel-in-progress: false
 jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.select.outputs.version }}
+      mode: ${{ steps.select.outputs.mode }}
+      publish: ${{ steps.registry.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - run: node --test .github/scripts/npm-release-state.test.mjs
+      - name: Select version and channel
+        id: select
+        env:
+          REQUESTED_MODE: ${{ inputs.mode }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          declared="$(cat VERSION)"
+          stable='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          preview='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-(alpha|beta|rc|dev)\.(0|[1-9][0-9]*)$'
+          [[ "$declared" =~ $stable ]]
+          case "$GITHUB_EVENT_NAME" in
+            pull_request) mode=DRY_RUN ;;
+            push) mode=PUBLISH_LATEST ;;
+            workflow_dispatch) mode="${REQUESTED_MODE:-AUTO}" ;;
+            *) exit 1 ;;
+          esac
+          [[ "$mode" != AUTO ]] || mode=PUBLISH_LATEST
+          version="${REQUESTED_VERSION:-$declared}"
+          case "$mode" in
+            DRY_RUN) [[ "$version" =~ $stable || "$version" =~ $preview ]] ;;
+            PUBLISH_NEXT) [[ "$version" =~ $preview && -n "$REQUESTED_VERSION" ]] ;;
+            PUBLISH_LATEST) [[ "$version" == "$declared" ]] ;;
+            *) exit 1 ;;
+          esac
+          if [[ "$mode" != DRY_RUN ]]; then test "$GITHUB_REF" = refs/heads/main; fi
+          printf 'version=%s\nmode=%s\n' "$version" "$mode" >> "$GITHUB_OUTPUT"
+      - name: Check registry without publish permissions
+        id: registry
+        env:
+          MODE: ${{ steps.select.outputs.mode }}
+          VERSION: ${{ steps.select.outputs.version }}
+        run: |
+          set -euo pipefail
+          case "$MODE" in
+            DRY_RUN) echo publish=false >> "$GITHUB_OUTPUT" ;;
+            PUBLISH_NEXT) node .github/scripts/npm-release-state.mjs @routilet/c-observer "$VERSION" next ;;
+            PUBLISH_LATEST) node .github/scripts/npm-release-state.mjs @routilet/c-observer "$VERSION" latest ;;
+          esac
   pack:
+    needs: plan
+    if: needs.plan.outputs.mode == 'DRY_RUN' || needs.plan.outputs.publish == 'true'
     runs-on: ubuntu-latest
     env:
-      MODE: ${{ inputs.mode || 'DRY_RUN' }}
-      VERSION: ${{ inputs.version || '0.1.0' }}
+      MODE: ${{ needs.plan.outputs.mode }}
+      VERSION: ${{ needs.plan.outputs.version }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -61,8 +122,6 @@ jobs:
           if [[ "$MODE" != DRY_RUN ]]; then
             test "$GITHUB_REF" = refs/heads/main
             test -s LICENSE
-            npm view @routilet/c-observer versions --json --fetch-retries=0 --fetch-timeout=15000 > "$RUNNER_TEMP/observer-versions.json"
-            node -e 'const v=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); if([v].flat().includes(process.env.VERSION)) throw Error("Version already published")' "$RUNNER_TEMP/observer-versions.json"
           fi
       - run: go test ./...
       - run: go vet ./...
@@ -126,14 +185,14 @@ jobs:
             ${{ runner.temp }}/observer-dist/SHA256SUMS
           if-no-files-found: error
   native-install:
-    needs: pack
+    needs: [plan, pack]
     strategy:
       fail-fast: false
       matrix:
         runner: [ubuntu-latest, macos-15, macos-15-intel, windows-latest]
     runs-on: ${{ matrix.runner }}
     env:
-      VERSION: ${{ inputs.version || '0.1.0' }}
+      VERSION: ${{ needs.plan.outputs.version }}
     steps:
       - uses: actions/setup-node@v6
         with:
@@ -168,27 +227,39 @@ jobs:
           console.log(process.platform,process.arch,caps);
           NODE
   publish:
-    needs: [pack, native-install]
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && (inputs.mode == 'PUBLISH_NEXT' || inputs.mode == 'PUBLISH_LATEST')
+    needs: [plan, pack, native-install]
+    if: github.ref == 'refs/heads/main' && needs.plan.outputs.publish == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
       - run: npm install --global 'npm@^11.21.0'
+      - name: Recheck registry before publishing
+        id: registry
+        env:
+          MODE: ${{ needs.plan.outputs.mode }}
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          tag=latest; if [[ "$MODE" == PUBLISH_NEXT ]]; then tag=next; fi
+          node .github/scripts/npm-release-state.mjs @routilet/c-observer "$VERSION" "$tag"
       - uses: actions/download-artifact@v4
         with:
-          name: observer-npm-${{ inputs.version }}
+          name: observer-npm-${{ needs.plan.outputs.version }}
           path: release
       - name: Publish the verified tarball to the explicitly selected channel
+        if: steps.registry.outputs.publish == 'true'
         env:
-          MODE: ${{ inputs.mode }}
-          VERSION: ${{ inputs.version }}
+          MODE: ${{ needs.plan.outputs.mode }}
+          VERSION: ${{ needs.plan.outputs.version }}
         run: |
           set -euo pipefail
           cd release
