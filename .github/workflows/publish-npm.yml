@@ -14,11 +14,11 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "DRY_RUN: private tarball; BOOTSTRAP_PACK: first manual publish tarball; PUBLISH_NEXT: OIDC preview"
+        description: "DRY_RUN: private tarball; PUBLISH_NEXT: OIDC preview"
         type: choice
         default: DRY_RUN
         required: true
-        options: [DRY_RUN, BOOTSTRAP_PACK, PUBLISH_NEXT]
+        options: [DRY_RUN, PUBLISH_NEXT]
       version:
         description: "Explicit prerelease (e.g. 0.1.0-beta.1); stable release is not enabled"
         required: true
@@ -33,8 +33,8 @@ jobs:
   pack:
     runs-on: ubuntu-latest
     env:
-      MODE: ${{ inputs.mode || (github.event_name == 'pull_request' && github.event.pull_request.number == 1 && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'feat/tui' && 'BOOTSTRAP_PR') || 'DRY_RUN' }}
-      VERSION: ${{ inputs.version || (github.event_name == 'pull_request' && github.event.pull_request.number == 1 && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'feat/tui' && '0.1.0-beta.2') || '0.1.0-dev.1' }}
+      MODE: ${{ inputs.mode || 'DRY_RUN' }}
+      VERSION: ${{ inputs.version || '0.1.0-dev.1' }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -51,15 +51,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc|dev)\.[0-9]+$ ]]
-          if [[ "$MODE" == BOOTSTRAP_PR ]]; then
-            # Owner-approved second preview: create a manual-publication artifact.
-            # The PR never receives an OIDC token or publishes to the registry.
-            test "$GITHUB_EVENT_NAME" = pull_request
-            test "$GITHUB_REF" = refs/pull/1/merge
-            test "$GITHUB_HEAD_REF" = feat/tui
-            test "$VERSION" = 0.1.0-beta.2
-            test -s LICENSE
-          elif [[ "$MODE" != DRY_RUN ]]; then
+          if [[ "$MODE" != DRY_RUN ]]; then
             test "$GITHUB_REF" = refs/heads/main
             test -s LICENSE
           fi
@@ -98,7 +90,7 @@ jobs:
             if(digest!==p.sha256) throw Error("binary digest mismatch");
           }
           NODE
-          (cd "$RUNNER_TEMP/observer-dist"; sha256sum *.tgz *.tar.gz > SHA256SUMS)
+          (cd "$RUNNER_TEMP/observer-dist"; sha256sum *.tgz *.tar.gz *.zip > SHA256SUMS)
       - name: Verify publishable metadata without publishing
         if: env.MODE == 'DRY_RUN'
         run: |
@@ -121,6 +113,7 @@ jobs:
           path: |
             ${{ runner.temp }}/observer-dist/*.tgz
             ${{ runner.temp }}/observer-dist/*.tar.gz
+            ${{ runner.temp }}/observer-dist/*.zip
             ${{ runner.temp }}/observer-dist/SHA256SUMS
           if-no-files-found: error
   native-install:
@@ -128,10 +121,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-latest, macos-15, macos-15-intel]
+        runner: [ubuntu-latest, macos-15, macos-15-intel, windows-latest]
     runs-on: ${{ matrix.runner }}
     env:
-      VERSION: ${{ inputs.version || (github.event_name == 'pull_request' && github.event.pull_request.number == 1 && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'feat/tui' && '0.1.0-beta.2') || '0.1.0-dev.1' }}
+      VERSION: ${{ inputs.version || '0.1.0-dev.1' }}
     steps:
       - uses: actions/setup-node@v6
         with:
@@ -142,6 +135,7 @@ jobs:
           name: observer-npm-${{ env.VERSION }}
           path: release
       - name: Verify native executable from installed package
+        shell: bash
         run: |
           set -euo pipefail
           files=("$PWD"/release/*.tgz)
@@ -161,6 +155,7 @@ jobs:
           if(execFileSync(bin,["--version"],{encoding:"utf8"}).trim()!==process.env.VERSION) throw Error("version mismatch");
           const caps=JSON.parse(execFileSync(bin,["--capabilities"],{encoding:"utf8"}));
           if(!caps.sessionSchemaVersions.includes(1) || !caps.backends.length) throw Error("missing capabilities");
+          if(process.platform==="win32" && !caps.backends.includes("gdb-mi")) throw Error("missing Windows GDB capability");
           console.log(process.platform,process.arch,caps);
           NODE
   publish-next:

@@ -30,3 +30,7 @@ PR #1（同仓库 feat/tui）的一次性 BOOTSTRAP_PR 模式生成 0.1.0-beta.1
 ## 第二次预览
 
 首发 beta.1 的固定历史产物：https://github.com/Routilet/c-observer/actions/runs/45738301452/artifacts/15079363315 。合并映射身份修复后，PR #1 的手动发布产物改为 0.1.0-beta.2，避免不同内容重用 beta.1 版本。自动 OIDC 发布仍限定 main；待维护者完成 npm 首次发布及授权后再走自动流程。稳定版不在本轮发布范围。
+
+## 更新后的预览范围
+
+新 scope 首次迁移发行已由维护者确认完成，移除 BOOTSTRAP_PR / BOOTSTRAP_PACK，仅保留 DRY_RUN 与 main 人工触发 PUBLISH_NEXT。新增 win32-x64 构建、zip、清单和 Windows 原生安装测试；GDB 真机引擎已有记录，但正式入口/TUI/分发仍需联合验收。Windows 仅 x64，macOS LLDB，Linux 双后端。旧段落中的 LLDB-only、旧首发步骤为历史记录，不再作为计划。正式 latest 和独立 Release 尚待验收后启用。

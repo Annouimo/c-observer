@@ -34,4 +34,5 @@ jobs:
           path: |
             ${{ runner.temp }}/observer-dist/*.tgz
             ${{ runner.temp }}/observer-dist/*.tar.gz
+            ${{ runner.temp }}/observer-dist/*.zip
           if-no-files-found: error
