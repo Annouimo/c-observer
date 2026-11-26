@@ -25,3 +25,7 @@ go run -mod=mod ./cmd/c-observer-preview -live
 - [MIT License](LICENSE)
 
 Go 单模块，Bubble Tea TUI，LLDB/DAP 与 GDB/MI 观察引擎。保持独立、离线、只读，不生成解题代码；Companion 装配回放已有真实 CI 验证。考试使用以课程规定为准。
+
+## 观察记录（0.1.1）
+
+现场观察完成后，在数据页或结果页按 **W**，确认后将完整 JSON 记录保存到用户主目录。界面显示文件位置；记录含源码、输入输出、快照及本地路径，分享前检查敏感内容。使用 `c-observer --replay <文件路径>` 离线打开记录，不需要编译器或调试器。Windows 使用对应的 c-observer.exe。R 在离线模式只重置回放，无法重新采集。参见 [记录格式](https://github.com/Routilet/c-observer/blob/main/docs/record-format.md)。
