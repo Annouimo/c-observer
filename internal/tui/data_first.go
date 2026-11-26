@@ -26,7 +26,8 @@ func (m Model) executionContext(w int) []string {
 	}
 	lines := []string{muted.Render(clip(SafeText(title, false), w))}
 	src := sourceFor(m.replay.Run, loc.File)
-	source := strings.Split(src, "\n")
+	source := strings.Split(SafeText(src, true), "\n")
+	tokens := lexC(strings.Join(source, "\n"))
 	radius := 0
 	if m.height >= 24 {
 		radius = 1
@@ -36,7 +37,8 @@ func (m Model) executionContext(w int) []string {
 		case loc.File != "" && src != "" && i > 0 && i <= len(source):
 			text := strings.TrimSpace(SafeText(source[i-1], false))
 			if i == loc.Line {
-				lines = append(lines, accent.Render(clip(fmt.Sprintf("▸ %d  %s", i, text), w)))
+				prefix := fmt.Sprintf("▸ %d ", i)
+				lines = append(lines, accent.Render(prefix)+renderTokens(tokens[i-1], max(0, w-cellWidth(prefix))))
 			} else {
 				lines = append(lines, muted.Render(clip(fmt.Sprintf("  %d  %s", i, text), w)))
 			}
@@ -46,34 +48,7 @@ func (m Model) executionContext(w int) []string {
 			lines = append(lines, "")
 		}
 	}
-	if !step.HasInterval() {
-		return append(lines, muted.Render(clip("尚无前一份记录，不能归因于当前行。", w)))
-	}
-	var labels []string
-	count := 0
-	for _, row := range m.replay.Rows(nil) {
-		if row.Changed {
-			count++
-			if len(labels) < 2 {
-				labels = append(labels, SafeText(row.Path, false)+": "+row.Before+" → "+row.Value)
-			}
-		}
-	}
-	const prefix = "区间变化（单行归因未确认）: "
-	summary := "无已观测可靠变化"
-	for n := len(labels); n > 0; n-- {
-		candidate := strings.Join(labels[:n], "; ")
-		if n < count {
-			candidate += fmt.Sprintf(" 等 %d 项", count)
-		}
-		if cellWidth(prefix+candidate) <= w {
-			summary = candidate
-			break
-		}
-		summary = fmt.Sprintf("%d 项 · H 查看历史", count)
-	}
-	lines = append(lines, clip(prefix+summary, w))
-	return lines
+	return append(lines, m.comparisonSummary(w))
 }
 
 var layoutIndex = regexp.MustCompile(`\[[0-9]+\]`)
@@ -97,6 +72,7 @@ type previewGroup struct {
 	widths   []int
 	sequence bool
 	cropped  bool
+	folded   bool
 }
 
 type observationBlock struct {
@@ -123,6 +99,10 @@ func (m Model) measuredValue(path, value string) int {
 func (m Model) previewGroup(row VariableRow, all []VariableRow, title string) previewGroup {
 	table := m.dataTable(row, all)
 	g := previewGroup{title: title, table: table, widths: make([]int, len(table.Headers))}
+	if row.Raw.Kind == observer.Array && !m.fullArrays[row.Key] {
+		g.table, g.folded = foldPreviewRows(table)
+		table = g.table
+	}
 	focus := m.displayFocus(row)
 	if focus.Rows.Valid {
 		for _, child := range row.Raw.Children {
@@ -206,10 +186,10 @@ func (m Model) makeBlock(row VariableRow, all []VariableRow, w int, active bool)
 	b.rangeText = m.rangeLabel(row)
 	b.title = name + fmt.Sprintf(" · %d", len(row.Raw.Children))
 	if row.Raw.ArrayLength != nil {
-		b.title += fmt.Sprintf("/%d", *row.Raw.ArrayLength)
+		b.title = fmt.Sprintf("%s[%d] · 已采%d", name, *row.Raw.ArrayLength, len(row.Raw.Children))
 	}
-	if !row.Raw.ChildrenComplete {
-		b.title += " · 缺采"
+	if !row.Raw.ChildrenComplete && row.Raw.ArrayLength == nil {
+		b.title += " · 不完整"
 	}
 	b.minWidth = min(w, max(16, min(26, cellWidth(b.title))))
 	b.idealWidth = min(w, max(b.minWidth, cellWidth(b.title)))
@@ -263,8 +243,9 @@ func previewCell(c Cell, width int) string {
 }
 
 type previewLine struct {
-	text  string
-	cells int
+	text     string
+	cells    int
+	priority bool
 }
 
 func (g previewGroup) render(w int) ([]previewLine, bool) {
@@ -280,11 +261,13 @@ func (g previewGroup) render(w int) ([]previewLine, bool) {
 		perLine := max(1, (w+1)/(cell+1))
 		for start := 0; start < len(g.table.Rows); start += perLine {
 			var keys, values []string
+			priority := false
 			for _, row := range g.table.Rows[start:min(start+perLine, len(g.table.Rows))] {
 				keys = append(keys, pad(clip(row[0].Text, cell), cell))
 				values = append(values, previewCell(row[1], cell))
+				priority = priority || row[1].Changed
 			}
-			lines = append(lines, previewLine{text: muted.Render(strings.Join(keys, " "))}, previewLine{text: strings.Join(values, " "), cells: len(values)})
+			lines = append(lines, previewLine{text: muted.Render(strings.Join(keys, " ")), priority: priority}, previewLine{text: strings.Join(values, " "), cells: len(values), priority: priority})
 		}
 		return lines, g.cropped
 	}
@@ -323,7 +306,11 @@ func (g previewGroup) render(w int) ([]previewLine, bool) {
 		lines = append(lines, previewLine{text: muted.Render(draw(header))})
 	}
 	for _, row := range g.table.Rows {
-		lines = append(lines, previewLine{text: draw(row), cells: max(0, min(len(row), len(widths))-1)})
+		priority := false
+		for _, c := range row {
+			priority = priority || c.Changed
+		}
+		lines = append(lines, previewLine{text: draw(row), cells: max(0, min(len(row), len(widths))-1), priority: priority})
 	}
 	return lines, hidden
 }
@@ -338,9 +325,18 @@ type observationShelf struct {
 func packObservations(blocks []observationBlock, w, widthClass int) []observationShelf {
 	var shelves []observationShelf
 	used := 0
-	for i, b := range blocks {
+	var order []int
+	for _, aggregate := range []bool{false, true} {
+		for i, b := range blocks {
+			if b.aggregate == aggregate {
+				order = append(order, i)
+			}
+		}
+	}
+	for _, i := range order {
+		b := blocks[i]
 		width := b.minWidth + (b.idealWidth-b.minWidth)*widthClass/3
-		if len(shelves) == 0 || used+2+width > w {
+		if len(shelves) == 0 || used+2+width > w || blocks[shelves[len(shelves)-1].indices[0]].aggregate != b.aggregate {
 			shelves = append(shelves, observationShelf{height: 1, fullHeight: 1})
 			used = 0
 		}
@@ -432,7 +428,7 @@ func (m Model) dataFirstPanel(w, h int) string {
 		for _, shelf := range candidate {
 			heads += len(shelf.indices)
 			for _, block := range shelf.lines {
-				for _, line := range block[:min(shelf.height, len(block))] {
+				for _, line := range visiblePreview(block, shelf.height) {
 					cells += line.cells
 				}
 			}
@@ -445,7 +441,7 @@ func (m Model) dataFirstPanel(w, h int) string {
 			break
 		}
 	}
-	label := fmt.Sprintf("数据 · %d 个对象", len(roots))
+	label := "数据"
 	if len(m.replay.Current().Globals) > 0 {
 		label += " · ⁺ 全局/静态"
 	}
@@ -465,6 +461,7 @@ func (m Model) dataFirstPanel(w, h int) string {
 		for i := 0; i < s.height; i++ {
 			var cells []string
 			for j, block := range s.lines {
+				block = visiblePreview(block, s.height)
 				line := ""
 				if i < len(block) {
 					line = block[i].text
@@ -474,10 +471,23 @@ func (m Model) dataFirstPanel(w, h int) string {
 			lines = append(lines, strings.Join(cells, "  "))
 		}
 	}
-	if hidden {
-		hint := "部分已采集值未展示 · D 详情"
+	folded := false
+	for _, b := range blocks {
+		for _, g := range b.groups {
+			folded = folded || g.folded
+		}
+	}
+	if hidden || folded {
+		hint := "… 其余已采集内容见详情"
 		if offscreen {
 			hint = "↑/↓ 浏览其余对象 · D 详情"
+		}
+		if folded {
+			if hidden {
+				hint = "≈ 同预览 · " + hint
+			} else {
+				hint = "≈ 相同预览 · Enter 展开已采集内容"
+			}
 		}
 		lines = append(lines, muted.Render(clip(hint, w)))
 	}
@@ -497,9 +507,11 @@ func fitObservationShelves(shelves []observationShelf, budget, cursor int) []obs
 	start := 0
 	if len(shelves) > budget {
 		for i, s := range shelves {
-			if cursor >= s.indices[0] && cursor <= s.indices[len(s.indices)-1] {
-				start = max(0, min(i-budget+1, len(shelves)-budget))
-				break
+			for _, index := range s.indices {
+				if cursor == index {
+					start = max(0, min(i-budget+1, len(shelves)-budget))
+					break
+				}
 			}
 		}
 	}
@@ -534,4 +546,48 @@ func fitObservationShelves(shelves []observationShelf, budget, cursor int) []obs
 		}
 	}
 	return view
+}
+
+// Keep titles and context, then prioritize changed rows over unchanged rows.
+// Output order remains chronological/index order; details retain every row.
+func visiblePreview(lines []previewLine, height int) []previewLine {
+	if len(lines) <= height {
+		return lines
+	}
+	if height <= 0 {
+		return nil
+	}
+	keep := make([]bool, len(lines))
+	keep[0] = true
+	count := 1
+	// Keep the first table header when there is room for a value.
+	if height >= 3 && len(lines) > 1 && lines[1].cells == 0 {
+		keep[1] = true
+		count++
+	}
+	for i, line := range lines {
+		if count == height {
+			break
+		}
+		if line.priority && !keep[i] {
+			keep[i] = true
+			count++
+		}
+	}
+	for i := range lines {
+		if count == height {
+			break
+		}
+		if !keep[i] {
+			keep[i] = true
+			count++
+		}
+	}
+	out := make([]previewLine, 0, count)
+	for i, line := range lines {
+		if keep[i] {
+			out = append(out, line)
+		}
+	}
+	return out
 }
