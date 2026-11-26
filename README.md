@@ -4,14 +4,14 @@
 
 所属组织：[Routilet](https://github.com/Routilet) · 原始设计者：Annouimo。
 
-**状态：前端体验版与已发布 LLDB 引擎联调；尚未正式发行。** 正式 `cmd/c-observer` 入口已在开发分支实现，等待双方协调合并。当前也提供预览命令。
+**状态：正式版发行准备中。** `cmd/c-observer` 提供独立入口，主界面采用数据优先设计。
 
 ```sh
 go run -mod=mod ./cmd/c-observer-preview -fixture testdata/snapshots/adaptive-array.json
 go run -mod=mod ./cmd/c-observer-preview -live
 ```
 
-第一条使用合成数据；第二条在已有 Clang/LLDB DAP 环境中显式运行真实 C 程序。Windows/GDB 尚未正式支持。
+第一条使用合成数据；第二条在已有 Clang/LLDB DAP 环境中显式运行真实 C 程序。正式入口支持 macOS LLDB、Linux GDB/LLDB、Windows x64 GDB。
 
 - [产品定位与 MVP](docs/product.md)
 - [前后端接口](docs/interface.md)
@@ -24,4 +24,4 @@ go run -mod=mod ./cmd/c-observer-preview -live
 - [协作约定](AGENTS.md)
 - [MIT License](LICENSE)
 
-Go 单模块，Bubble Tea TUI，LLDB/DAP 观察引擎。保持独立、离线、只读，不生成解题代码；Companion 集成另行验收。考试使用以课程规定为准。
+Go 单模块，Bubble Tea TUI，LLDB/DAP 与 GDB/MI 观察引擎。保持独立、离线、只读，不生成解题代码；Companion 装配回放已有真实 CI 验证。考试使用以课程规定为准。

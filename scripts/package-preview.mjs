@@ -8,7 +8,9 @@ const version = process.argv[2] || "0.1.0-dev.1";
 if (!/^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/.test(version)) throw Error("Invalid version");
 const out = path.resolve(process.argv[3] || "dist-observer");
 const publishable = process.argv[4] === "--publishable";
-if (publishable && !/^\d+\.\d+\.\d+-(?:alpha|beta|rc|dev)\.[0-9]+$/.test(version)) throw Error("Preview publisher only accepts explicit prerelease versions");
+const stable = /^\d+\.\d+\.\d+$/.test(version);
+if (publishable && !stable && !/^\d+\.\d+\.\d+-(?:alpha|beta|rc|dev)\.[0-9]+$/.test(version)) throw Error("Publisher requires a stable or explicit prerelease version");
+const tag = stable ? "latest" : "next";
 await fs.access("LICENSE");
 const pkg = path.join(out, "npm");
 const platforms = [
@@ -33,7 +35,7 @@ for (const [goos, goarch, os, arch] of platforms) {
   });
   await fs.chmod(binary, 0o755);
   const sha256 = createHash("sha256").update(await fs.readFile(binary)).digest("hex");
-  manifest.platforms[target] = { executable: relative, sha256, status: "preview" };
+  manifest.platforms[target] = { executable: relative, sha256, status: stable ? "stable" : "preview" };
   const dir = path.join(out, "standalone-" + target);
   await fs.mkdir(dir);
   await fs.copyFile(binary, path.join(dir, filename));
@@ -41,7 +43,7 @@ for (const [goos, goarch, os, arch] of platforms) {
   await fs.copyFile("docs/integration.md", path.join(dir, "integration.md"));
   await fs.copyFile(path.join(pkg,"LICENSE"),path.join(dir,"LICENSE"));
   await fs.copyFile(path.join(pkg,"THIRD_PARTY_NOTICES.txt"),path.join(dir,"THIRD_PARTY_NOTICES.txt"));
-  await fs.writeFile(path.join(dir, "README.txt"), "C Observer " + version + "\nRun " + filename + ". Local GCC/GDB (Python-enabled) or Clang/LLDB required, depending on platform. Preview only; no Node.js needed.\n");
+  await fs.writeFile(path.join(dir, "README.txt"), "C Observer " + version + "\nRun " + filename + ". Local GCC/GDB (Python-enabled) or Clang/LLDB required, depending on platform. " + (stable ? "Stable release." : "Preview only.") + " No Node.js needed.\n");
   if (goos === "windows") {
     execFileSync("zip", ["-qr", path.join(out, "c-observer-" + version + "-" + target + ".zip"), "."], { cwd: dir, stdio: "inherit" });
   } else {
@@ -51,12 +53,12 @@ for (const [goos, goarch, os, arch] of platforms) {
 await fs.writeFile(path.join(pkg, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
 await fs.copyFile("docs/npm-readme.md", path.join(pkg, "README.md"));
 await fs.writeFile(path.join(pkg, "package.json"), JSON.stringify({
-  name: "@routilet/c-observer", version, description: "C Observer native binary distribution (preview)",
+  name: "@routilet/c-observer", version, description: "C Observer native binary distribution" + (stable ? "" : " (preview)"),
   repository: { type: "git", url: "git+https://github.com/Routilet/c-observer.git" },
   homepage: "https://github.com/Routilet/c-observer#readme",
   bugs: { url: "https://github.com/Routilet/c-observer/issues" },
   license: "MIT",
-  ...(publishable ? { publishConfig: { access: "public", tag: "next" } } : { private: true }),
+  ...(publishable ? { publishConfig: { access: "public", tag } } : { private: true }),
   files: ["bin", "manifest.json", "README.md", "LICENSE", "THIRD_PARTY_NOTICES.txt"],
   exports: { "./manifest.json": "./manifest.json", "./package.json": "./package.json" }
 }, null, 2) + "\n");

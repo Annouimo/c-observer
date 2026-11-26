@@ -26,7 +26,7 @@ go run -mod=mod ./cmd/c-observer-preview -fixture testdata/snapshots/adaptive-ar
 go run -mod=mod ./cmd/c-observer-preview -live
 go run -mod=mod ./cmd/c-observer-preview -live -source main.c -input sample.in -expected sample.out
 ```
-可用 -compiler/-debugger 指定工具链。-live -setup 显示启动配置。依赖已安装的 Clang / LLDB DAP。当前正式引擎仅 LLDB；GDB 与 Windows 运行支持由 Codex 另行实现。真实记录不会标为合成；身份不可靠时不生成虚假变化或自动裁剪。
+可用 -compiler/-debugger 指定工具链。-live -setup 显示启动配置。依赖已安装的 Clang / LLDB DAP。正式 CLI 支持 macOS LLDB、Linux GDB/LLDB、Windows x64 GDB；该预览入口的 -live 仍使用 LLDB。真实记录不会标为合成；身份不可靠时不生成虚假变化或自动裁剪。
 
 ## 数据优先回放
 - 默认全宽数据区；←/→：历史前后；↑/↓：对象选择；C：完整源码；I：输入输出；Tab/Shift+Tab：视图；Home/End：全部历史首尾。

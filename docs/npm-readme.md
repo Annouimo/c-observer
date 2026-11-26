@@ -6,11 +6,11 @@
 
 新发行包名为 `@routilet/c-observer`，历史 `@annouimo/c-observer` 版本仍可使用。
 
-## 预览版
+## 支持平台
 
-当前包含 macOS arm64、macOS x64 和 Linux x64 的预览二进制；需要本机已安装兼容 Clang / LLDB。Windows / GDB 尚未纳入此打包清单。二进制能够启动不等于本机调试工具链已经配置好。
+包含 macOS arm64/x64（Clang/LLDB）、Linux x64（GCC/GDB 或 Clang/LLDB）、Windows x64（GCC/GDB）原生二进制。GDB 需支持 Python；本包不安装编译器或调试器。二进制能够启动不等于本机调试工具链已经配置好。
 
-Companion 根据 manifest.json 选择本机程序并使用版本化会话协议调用。独立使用者应从项目的 GitHub Releases（正式发行后）获取对应平台的原生程序，无需 npm 或 Node.js。
+Companion 根据 manifest.json 选择本机程序并使用版本化会话协议调用。独立使用者应从项目的 发行工作流的原生归档（GitHub Releases 如已提供）获取对应平台的原生程序，无需 npm 或 Node.js。
 
 ```sh
 c-observer
