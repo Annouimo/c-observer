@@ -201,11 +201,11 @@ func (m Model) observationWorkspace(w, h int) string {
 	topH = min(topH, h-4)
 	var top string
 	if w >= 76 && topH >= 7 {
-		left := w*3/5
-		right := w-left
+		left := w * 3 / 5
+		right := w - left
 		source := panel("执行 · 区间", m.executionContext(left-2), left, topH)
-		inner := topH-2
-		inH := inner/2
+		inner := topH - 2
+		inH := inner / 2
 		io := strings.Split(fixed(m.inputPreview(right-2, inH), right-2, inH), "\n")
 		io = append(io, m.outputPreview(right-2, inner-inH)...)
 		output := panel("输入输出", io, right, topH)
@@ -232,7 +232,7 @@ func (m Model) observationWorkspace(w, h int) string {
 
 		top = panel("执行 / 输入输出", lines, w, topH)
 	}
-	dataH := h-topH
+	dataH := h - topH
 	data := strings.Split(m.dataFirstPanel(w-2, dataH-2), "\n")
-	return top+"\n"+panel("数据", data, w, dataH)
+	return top + "\n" + panel("数据", data, w, dataH)
 }
