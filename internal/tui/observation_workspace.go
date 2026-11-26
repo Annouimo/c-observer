@@ -180,9 +180,9 @@ func (m Model) observationWorkspace(w, h int) string {
 		topH = 9
 	}
 	if w < 76 || h < 18 {
-		topH = 5
+		topH = 6
 		if h >= 18 {
-			topH = 6
+			topH = 7
 		}
 	}
 	topH = min(topH, h-4)
@@ -204,31 +204,22 @@ func (m Model) observationWorkspace(w, h int) string {
 		top = strings.Join(joined, "\n")
 	} else {
 		// Narrow terminals retain both streams without taking a full second pane.
-		context := m.executionContext(w-2)
-		lines := []string{context[0]}
-		if len(context) > 2 && topH >= 6 {
-			lines = append(lines, context[1])
+		context := m.executionContext(w - 2)
+		current := 1
+		if m.height >= 24 {
+			current = 2
 		}
-		lines = append(lines, context[len(context)-1])
-		in, out := m.inputPreview(w-2, 2), m.outputPreview(w-2, 2)
-		if topH >= 6 {
-			lines = append(lines, clip("输入: "+strings.Join(strings.Split(SafeText(string(m.config.Stdin), true), "\n"), " "), w-2))
-			_ = in
-			lines = append(lines, clip("输出: "+SafeText(string(m.configuredOutput()), false), w-2))
-		} else {
-			lines = append(lines, out[0]+muted.Render(" · I 输入输出"))
+		var lines []string
+		if topH >= 7 {
+			lines = append(lines, context[0])
 		}
+		lines = append(lines, context[current], context[len(context)-1])
+		in, out := m.inputPreview(w-8, 2), m.outputPreview(w-8, 2)
+		lines = append(lines, accent.Render("输入 ")+in[1], accent.Render("输出 ")+out[1])
+
 		top = panel("执行 / 输入输出", lines, w, topH)
 	}
 	dataH := h-topH
 	data := strings.Split(m.dataFirstPanel(w-2, dataH-2), "\n")
 	return top+"\n"+panel("数据", data, w, dataH)
-}
-
-func (m Model) configuredOutput() []byte {
-	out, _ := m.replay.Output()
-	if len(out) == 0 {
-		return []byte("尚无已捕获输出")
-	}
-	return out
 }
