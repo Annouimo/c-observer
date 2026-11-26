@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/Routilet/c-observer/internal/observer"
 )
@@ -22,7 +23,7 @@ func (m Model) comparisonSummary(w int) string {
 			unknown = unknown || !row.Raw.ChildrenComplete || !row.Reliable || row.Raw.Status != observer.Observed
 		} else {
 			compared = compared || row.Comparable
-			unknown = unknown || !row.Comparable
+			unknown = unknown || !row.Comparable || row.Raw.Kind == observer.String && len(row.Raw.Children) > 0 && !row.Raw.ChildrenComplete
 		}
 		if !row.Changed {
 			continue
@@ -46,6 +47,18 @@ func (m Model) comparisonSummary(w int) string {
 			unknown = true
 		}
 		if m.replay.Run.Session.Capabilities.Globals && !s.GlobalsComplete {
+			unknown = true
+		}
+	}
+	// Objects disappearing from a capture are not proof of unchanged data.
+	old := m.replay
+	old.Seek(old.Position - 1)
+	keys := map[string]bool{}
+	for _, row := range rows {
+		keys[row.Key] = true
+	}
+	for _, row := range old.Rows(nil) {
+		if !keys[row.Key] || (row.Raw.Kind == observer.Array || row.Raw.Kind == observer.Struct) && !row.Raw.ChildrenComplete {
 			unknown = true
 		}
 	}
@@ -137,7 +150,7 @@ func (m Model) outputPreview(w, h int) []string {
 			width := 0
 			for j, r := range display {
 				piece := SafeText(string(r), false)
-				n := len(string(r))
+				_, n := utf8.DecodeRuneInString(display[j:])
 				if width+cellWidth(piece) > w {
 					break
 				}
