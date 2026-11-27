@@ -4,7 +4,7 @@
 
 所属组织：[Routilet](https://github.com/Routilet) · 原始设计者：Annouimo。
 
-**本分支：下一代 Web GUI 开发中（拟 0.2.0，尚未发行）。** main 保持原版 0.1.2 TUI；本分支逐步实现执行文档式 GUI、复用既有引擎，再精简数据接口。技术实验已经通过 Windows 11 x64、macOS Apple Silicon 基础窗口与离线验收。
+**本分支：下一代 Web GUI 开发中（拟 0.2.0，尚未发行）。** main 保持原版 0.1.2 TUI；本分支逐步实现数据优先的单界面时间回放 GUI、复用既有引擎，再精简数据接口。技术实验已经通过 Windows 11 x64、macOS Apple Silicon 基础窗口与离线验收。
 
 - [产品定义](docs/product.md)
 - [前端设计](docs/design.md)

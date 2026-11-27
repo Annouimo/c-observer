@@ -60,72 +60,11 @@ export function sourceLine(run: Run, loc: Location): string {
   return run.session.sources.find(s => s.path === loc.file)?.text.split(/\r?\n/)[loc.line - 1] ?? "";
 }
 export const columnKey = (c: Column) => JSON.stringify([c.name, c.fn ?? "", !!c.global, c.path ?? []]);
-function rootValues(s: Snapshot, c: Column): Variable[] {
-  if (c.global) return (s.globals ?? []).filter(v => v.name === c.name);
-  const frame = s.frames[0];
-  const fn = frame?.location.function ?? s.location.function;
-  const locals = !c.fn || c.fn === fn ? (frame?.variables ?? []).filter(v => v.name === c.name) : [];
-  return c.fn ? locals : [...locals, ...(s.globals ?? []).filter(v => v.name === c.name)];
-}
-export function values(s: Snapshot,c: Column): Variable[] {
-  let found=rootValues(s,c);
-  for(const part of c.path??[]) found=found.flatMap(v=>v.status==="observed"?(v.children??[]).filter(ch=>ch.name===part.name&&ch.index===part.index):[]);
-  return found;
-}
 export function memberLabel(m:Member):string { return m.index===undefined?"."+m.name:"["+m.index+"]"; }
 export function columnLabel(c:Column):string { return c.name+(c.path??[]).map(memberLabel).join(""); }
-export function memberColumns(v:Variable,c:Column):Column[] {
-  return (v.children??[]).map(ch=>({...c,path:[...(c.path??[]),{name:ch.name,index:ch.index}]}));
-}
-export type Difference={path:string;before:string;after:string};
-export function differences(previous:Variable|undefined,value:Variable,path="",limit=8):Difference[] {
-  if(limit<=0||!previous||previous.status!=="observed"||value.status!=="observed"||previous.type!==value.type||previous.kind!==value.kind) return [];
-  if(value.children?.length) {
-    const out:Difference[]=[];
-    for(const ch of value.children) {
-      out.push(...differences(childBefore(previous,ch),ch,path+memberLabel(ch),limit-out.length));
-      if(out.length>=limit) break;
-    }
-    return out;
-  }
-  return valueChanged(previous,value)?[{path,before:label(previous),after:label(value)}]:[];
-}
-export function previewValues(v:Variable,limit=6):{path:string;value:string}[] {
-  const out:{path:string;value:string}[]=[];
-  function visit(x:Variable,path:string) {
-    if(out.length>=limit) return;
-    if(x.status==="observed"&&x.children?.length) for(const ch of x.children) {visit(ch,path+memberLabel(ch));if(out.length>=limit) break;}
-    else out.push({path,value:label(x)});
-  }
-  visit(v,"");
-  return out;
-}
 export function comparable(v: Variable): boolean {
   return v.status === "observed" && !v.value_truncated &&
     (v.children?.length ? v.children_complete === true && v.children.every(comparable) : v.value !== undefined);
-}
-// Only compare unique, same-name/same-type children; partial arrays can
-// still provide real evidence of differences at recorded indices.
-export function childBefore(previous: Variable | undefined, child: Variable): Variable | undefined {
-  if (!previous || previous.status !== "observed") return undefined;
-  const candidates = (previous.children ?? []).filter(c => c.name === child.name && c.index === child.index && c.type === child.type && c.kind === child.kind);
-  return candidates.length === 1 ? candidates[0] : undefined;
-}
-export function valueChanged(previous: Variable | undefined, value: Variable): boolean {
-  if (!previous || previous.status !== "observed" || value.status !== "observed" || previous.type !== value.type || previous.kind !== value.kind) return false;
-  if (value.children?.length) return value.children.some(c => valueChanged(childBefore(previous,c),c));
-  return comparable(previous) && comparable(value) && previous.value !== value.value;
-}
-export function previousValue(run: Run, s: Snapshot, c: Column): Variable | undefined {
-  if (!s.id) return undefined;
-  const p = run.snapshots[s.id-1];
-  if (!p || (!c.global && (p.location.function !== s.location.function || p.frames.length !== s.frames.length))) return undefined;
-  const a = values(p,c), b = values(s,c);
-  return a.length === 1 && b.length === 1 && a[0].type === b[0].type ? a[0] : undefined;
-}
-export function changed(run: Run, s: Snapshot, c: Column): boolean {
-  const v=values(s,c);
-  return v.length===1 && valueChanged(previousValue(run,s,c),v[0]);
 }
 export function label(v: Variable): string {
   if (v.status === "not_captured") return "未采集";
@@ -137,226 +76,103 @@ export function label(v: Variable): string {
   }
   return (v.value ?? "无已记录值") + (v.value_truncated ? " · 截断" : "");
 }
-export type Token = { text: string; kind: "identifier" | "keyword" | "literal" | "comment" | "other" };
-const keywords = new Set("auto break case char const continue default do double else enum extern float for goto if inline int long register restrict return short signed sizeof static struct switch typedef union unsigned void volatile while _Bool _Complex _Imaginary".split(" "));
-export function tokenize(text: string): Token[][] {
-  const result: Token[][] = [[]];
-  const re = /\/\*[\s\S]*?(?:\*\/|$)|\/\/[^\r\n]*|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|[A-Za-z_]\w*|\r?\n|[^\r\n]/g;
-  for (const m of text.matchAll(re)) {
-    const t = m[0];
-    const kind = t.startsWith("//") || t.startsWith("/*") ? "comment" : t.startsWith('"') || t.startsWith("'") ? "literal" : keywords.has(t) ? "keyword" : /^[A-Za-z_]\w*$/.test(t) ? "identifier" : "other";
-    const lines = t.split(/\r?\n/);
-    lines.forEach((part,i) => { if(i) result.push([]); if(part) result.at(-1)!.push({text:part,kind}); });
+
+export type Shape={name:string;index?:number;kind:string;type:string;children:Shape[];arrayLength?:number};
+export type Module={column:Column;shape:Shape};
+const identity=(v:{name:string;index?:number})=>v.index===undefined?"n:"+v.name:"i:"+v.index;
+function mergeShape(shape:Shape,v:Variable){
+  if(v.status!=="observed")return;
+  if(shape.kind!==v.kind||shape.type!==v.type){shape.kind="mixed";shape.type="多种类型";return;}
+  if(v.array_length!==undefined)shape.arrayLength=Math.max(shape.arrayLength??0,v.array_length);
+  const byKey=new Map(shape.children.map(c=>[identity(c),c]));
+  for(const ch of v.children??[]){
+    const key=identity(ch);
+    let dest=byKey.get(key);
+    if(!dest){dest=newShape(ch);shape.children.push(dest);byKey.set(key,dest);}
+    mergeShape(dest,ch);
   }
-  return result;
 }
-export type TraceNode = { kind:"observation"; snapshot: Snapshot } | { kind:"group"; key:string; label:string; children:TraceNode[]; anchor:Location; groupType:"loop"|"round"|"call"; endLine?:number };
-export function flatten(nodes: TraceNode[]): Snapshot[] {
-  return nodes.flatMap(n => n.kind === "observation" ? [n.snapshot] : flatten(n.children));
-}
-type LoopRange={file:string;start:number;end:number};
-export function loopRanges(source:Source):LoopRange[] {
-  const ts=tokenize(source.text).flatMap((line,i)=>line.filter(t=>t.kind!=="comment"&&t.kind!=="literal"&&t.text.trim()).map(t=>({...t,line:i+1})));
-  const out:LoopRange[]=[];
-  function close(i:number,open:string,close:string):number {
-    let depth=0;
-    for(let j=i;j<ts.length;j++){if(ts[j].text===open)depth++;else if(ts[j].text===close&&--depth===0)return j;}
-    return -1;
+function newShape(v:Variable):Shape{return {name:v.name,index:v.index,kind:v.kind,type:v.type,children:[],arrayLength:v.array_length};}
+function finishShape(s:Shape){
+  // Small declared arrays expose missing coordinates; no value is inferred.
+  if(s.kind==="array"&&s.arrayLength!==undefined&&s.arrayLength<=32&&s.children.every(c=>c.index!==undefined)){
+    const seen=new Set(s.children.map(c=>c.index));
+    for(let i=0;i<s.arrayLength;i++)if(!seen.has(i))s.children.push({name:"["+i+"]",index:i,kind:"unknown",type:"",children:[]});
   }
-  for(let i=0;i<ts.length;i++) {
-    if(ts[i].kind!=="keyword"||!["for","while","do"].includes(ts[i].text))continue;
-    let j=i+1;
-    if(ts[i].text!=="do"){if(ts[j]?.text!=="(")continue;j=close(j,"(",")")+1;if(j<=0)continue;}
-    let end=-1;
-    if(ts[j]?.text==="{")end=close(j,"{","}");
-    else if(ts[j]&&![";","for","while","do","if","switch","else"].includes(ts[j].text)){
-      // Common unbraced statement only. Ambiguous nested controls stay raw.
-      let depth=0;
-      for(let k=j;k<ts.length;k++){const t=ts[k].text;if(t==="("||t==="[")depth++;if(t===")"||t==="]")depth--;if(t==="{"||t==="}")break;if(t===";"&&depth===0){end=k;break;}}
+  if(s.kind==="array")s.children.sort((a,b)=>(a.index??Infinity)-(b.index??Infinity));
+  for(const child of s.children)finishShape(child);
+}
+export function modules(run:Run):Module[]{
+  const map=new Map<string,Module>();
+  for(const s of run.snapshots){
+    const fn=s.frames[0]?.location.function??s.location.function;
+    const pairs:[Column,Variable][]=[
+      ...(s.frames[0]?.variables??[]).map(v=>[{name:v.name,fn},v] as [Column,Variable]),
+      ...(s.globals??[]).map(v=>[{name:v.name,global:true},v] as [Column,Variable])
+    ];
+    for(const [c,v] of pairs){
+      const key=columnKey(c);let m=map.get(key);
+      if(!m){m={column:c,shape:newShape(v)};map.set(key,m);}
+      mergeShape(m.shape,v);
     }
-    if(end>=j&&ts[end].line>ts[i].line)out.push({file:source.path,start:ts[i].line,end:ts[end].line});
   }
-  return out.sort((a,b)=>a.start-b.start||b.end-a.end);
+  for(const m of map.values())finishShape(m.shape);
+  // Scalars first; stable within category in order first encountered.
+  return [...map.values()].sort((a,b)=>Number(!!a.shape.children.length||["array","struct","union"].includes(a.shape.kind))-Number(!!b.shape.children.length||["array","struct","union"].includes(b.shape.kind)));
 }
-const sameContext=(a:Snapshot,b:Snapshot)=>a.location.file===b.location.file&&a.location.function===b.location.function&&a.frames.length===b.frames.length;
-const observation=(s:Snapshot):TraceNode=>({kind:"observation",snapshot:s});
-// Presentation hints only. Every original snapshot appears exactly once,
-// and flatten(groupTrace(run)) retains the original time order.
-export function groupTrace(run:Run):TraceNode[] {
-  const ranges=run.session.sources.flatMap(loopRanges);
-  function build(ss:Snapshot[],level:number,excluded:LoopRange[]=[]):TraceNode[]{
-    if(level>=32)return ss.map(observation);
-    const out:TraceNode[]=[];
-    for(let i=0;i<ss.length;){
-      const first=ss[i],depth=first.frames.length;
-      const candidates=ranges.filter(r=>!excluded.includes(r)&&r.file===first.location.file&&first.location.line>=r.start&&first.location.line<=r.end);
-      let grouped=false;
-      for(const r of candidates){
-        let j=i+1;
-        while(j<ss.length){
-          const t=ss[j];
-          if(depth>0&&t.frames.length>depth){j++;continue;}
-          if(!sameContext(first,t)||t.location.line<r.start||t.location.line>r.end)break;
-          j++;
-        }
-        const startsAtHeader=first.location.line===r.start;
-        const anchors:number[]=[];
-        for(let k=i;k<j;k++)if(sameContext(first,ss[k])&&ss[k].location.line===r.start)anchors.push(k);
-        const parts:Snapshot[][]=[];
-        let tail:Snapshot[]=[];
-        if(startsAtHeader){
-          for(let a=0;a+1<anchors.length;a++)if(anchors[a+1]-anchors[a]>1)parts.push(ss.slice(anchors[a],anchors[a+1]));else {parts.length=0;break;}
-          if(parts.length>=2)tail=ss.slice(anchors.at(-1)!,j);
-        }else{
-          let k=i;
-          for(const a of anchors){if(a>k){parts.push(ss.slice(k,a+1));k=a+1;}else{parts.length=0;break;}}
-          if(parts.length>=2)tail=ss.slice(k,j);
-        }
-        if(parts.length<2)continue;
-        const anchor={...first.location,line:r.start};
-        const rounds:TraceNode[]=parts.map((p,n)=>({kind:"group",groupType:"round",key:"round-"+p[0].id+"-"+r.start,label:"第 "+(n+1)+" 组观察",anchor,children:build(p,level+1,[...excluded,r])}));
-        out.push({kind:"group",groupType:"loop",key:"loop-"+first.id+"-"+r.start,label:rounds.length+" 组",anchor,endLine:r.end,children:rounds});
-        out.push(...build(tail,level+1,[...excluded,r]));
-        i=j;grouped=true;break;
-      }
-      if(grouped)continue;
-      if(depth>0&&i+1<ss.length&&ss[i+1].frames.length>depth){
-        let j=i+1;while(j<ss.length&&ss[j].frames.length>depth)j++;
-        out.push(observation(first),{kind:"group",groupType:"call",key:"call-"+ss[i+1].id,label:(ss[i+1].location.function??"未知函数")+" · 调用观察",anchor:first.location,children:build(ss.slice(i+1,j),level+1)});
-        i=j;continue;
-      }
-      out.push(observation(first));i++;
-    }
-    return out;
-  }
-  return build(run.snapshots,0);
+export function member(c:Column,s:{name:string;index?:number}):Column{return {...c,path:[...(c.path??[]),{name:s.index===undefined?s.name:"["+s.index+"]",index:s.index}]};}
+export function childValue(v:Variable|undefined,s:{name:string;index?:number}):Variable|undefined{
+  if(!v||v.status!=="observed")return undefined;
+  const matches=(v.children??[]).filter(c=>identity(c)===identity(s));
+  return matches.length===1?matches[0]:undefined;
 }
-export type SourceRow={line:number;tokens:Token[];nodes:TraceNode[];count:number;fn?:string};
-// Static source is the document skeleton. Dynamic nodes are attached, never
-// used to fabricate states for lines lacking an observation. Unknown locations
-// remain accessible in the chronological view / unmapped section.
-export function sourceDocument(run:Run,path:string,tree=groupTrace(run)):{rows:SourceRow[];unmapped:TraceNode[]} {
-  const source=run.session.sources.find(s=>s.path===path);
-  const rows:SourceRow[]=source?tokenize(source.text).map((tokens,i)=>({line:i+1,tokens,nodes:[],count:0})):[];
-  for(const s of run.snapshots)if(s.location.file===path&&rows[s.location.line-1]){
-    const row=rows[s.location.line-1];row.count++;row.fn??=s.location.function;
-  }
-  const unmapped:TraceNode[]=[];
-  for(const node of tree){
-    const loc=node.kind==="observation"?node.snapshot.location:node.anchor;
-    if(loc.file===path&&rows[loc.line-1])rows[loc.line-1].nodes.push(node);
-    else if(!run.session.sources.some(s=>s.path===loc.file&&loc.line>0&&loc.line<=s.text.split(/\r?\n/).length))unmapped.push(node);
-  }
-  return {rows,unmapped};
+export function selectedValues(s:Snapshot,c:Column):Variable[]{
+  // Unlike generic name fallback, root modules are always scoped to their
+  // recorded local/global class. Array paths use actual indices, not labels.
+  const fn=s.frames[0]?.location.function??s.location.function;
+  let roots=c.global?(s.globals??[]):c.fn===fn?(s.frames[0]?.variables??[]):[];
+  roots=roots.filter(v=>v.name===c.name);
+  if(!c.path?.length)return roots;
+  if(roots.length!==1)return [];
+  let v:Variable|undefined=roots[0];
+  for(const p of c.path)v=childValue(v,p);
+  return v?[v]:[];
 }
-export function groupDifferences(run:Run,n:TraceNode,c:Column,limit=3):Difference[]{
-  const out:Difference[]=[];
-  if(n.kind!=="group")return out;
-  for(const s of flatten(n.children).slice(1)){
-    const v=values(s,c);
-    if(v.length===1)out.push(...differences(previousValue(run,s,c),v[0],"",limit-out.length));
-    if(out.length>=limit)break;
+export function matchingPrevious(run:Run,s:Snapshot,c:Column):Variable|undefined{
+  const p=run.snapshots[s.id-1];
+  if(!p||!c.global&&(p.location.file!==s.location.file||p.location.function!==s.location.function||p.frames.length!==s.frames.length))return undefined;
+  const before=selectedValues(p,c),now=selectedValues(s,c);
+  return before.length===1&&now.length===1&&before[0].type===now[0].type&&before[0].kind===now[0].kind?before[0]:undefined;
+}
+export function observedChange(before:Variable|undefined,now:Variable|undefined):boolean{
+  if(!before||!now||before.status!=="observed"||now.status!=="observed"||before.type!==now.type||before.kind!==now.kind)return false;
+  if(now.children?.length){
+    const seen=new Map<string,number>();for(const c of now.children)seen.set(identity(c),(seen.get(identity(c))??0)+1);
+    return now.children.some(c=>seen.get(identity(c))===1&&observedChange(childValue(before,c),c));
+  }
+  return comparable(before)&&comparable(now)&&before.value!==now.value;
+}
+export function changeEvents(run:Run,c:Column):number[]{
+  const out:number[]=[];
+  for(const s of run.snapshots){
+    const v=selectedValues(s,c);
+    if(v.length===1&&observedChange(matchingPrevious(run,s,c),v[0]))out.push(s.id);
   }
   return out;
 }
-
-// Hide only the static duplicate of a represented body line, never a
-// standalone observation, an unknown line, the loop header or closing brace.
-export function replacedLines(rows:SourceRow[],expanded:(n:Extract<TraceNode,{kind:"group"}>)=>boolean):Set<number>{
-  const hidden=new Set<number>();
-  for(const row of rows)for(const n of row.nodes){
-    if(n.kind!=="group"||n.groupType!=="loop"||!expanded(n)||n.endLine===undefined)continue;
-    const represented=new Set(flatten(n.children).filter(s=>s.location.file===n.anchor.file&&s.location.function===n.anchor.function).map(s=>s.location.line));
-    for(const r of rows)if(r.line>n.anchor.line&&r.line<=n.endLine&&!r.nodes.length&&represented.has(r.line)&&r.tokens.some(t=>t.text.trim()&&t.text!=="}"))hidden.add(r.line);
-  }
-  return hidden;
+export function nextEvent(events:number[],step:number,direction:-1|1):number|undefined{
+  return direction===1?events.find(id=>id>step):events.filter(id=>id<step).at(-1);
 }
-export type LeafSlot={path:Member[];label:string};
-export function atPath(v:Variable|undefined,path:Member[]):Variable|undefined {
-  for(const p of path){
-    if(!v||v.status!=="observed")return undefined;
-    const match=(v.children??[]).filter(c=>p.index!==undefined?c.index===p.index:c.index===undefined&&c.name===p.name);
-    v=match.length===1?match[0]:undefined;
-  }
-  return v;
+export function displayValue(v:Variable|undefined,root=false):string{
+  return !v?(root?"—":"?"):v.status==="not_captured"?"?":v.status==="unavailable"?"无法读取":label(v);
 }
-// A single stable leaf layout for a column across all recorded observations.
-// Bound size by the declared array length, not merely the captured prefix.
-export function smallLayout(all:Variable[],limit=8):LeafSlot[] {
-  const roots=all.filter(v=>v.status==="observed");
-  if(!roots.length||!roots.some(v=>v.children?.length)||roots.some(v=>v.type!==roots[0].type||v.kind!==roots[0].kind))return [];
-  function walk(vs:Variable[],path:Member[]):Member[][]|null{
-    const observed=vs.filter(v=>v.status==="observed");
-    if(!observed.length)return [path];
-    const first=observed[0];
-    if(observed.some(v=>v.kind!==first.kind||v.type!==first.type))return null;
-    if(first.kind==="array"){
-      const size=first.array_length;
-      if(size===undefined||size>limit||size<=0||observed.some(v=>v.array_length!==size))return null;
-      const children=observed.flatMap(v=>v.children??[]);
-      if(!children.length||children.some(v=>v.index===undefined||v.index>=size))return null;
-      const result:Member[][]=[];
-      for(let i=0;i<size;i++){
-        const actual=children.filter(c=>c.index===i);
-        const branch=walk(actual.length?actual:children,[...path,{name:"["+i+"]",index:i}]);
-        if(!branch)return null;result.push(...branch);if(result.length>limit)return null;
-      }
-      return result;
-    }
-    if(first.kind==="struct"){
-      const children=observed.flatMap(v=>v.children??[]);
-      if(!children.length||observed.some(v=>v.children_complete!==true))return null;
-      const names=[...new Set(children.map(c=>c.name))];
-      const result:Member[][]=[];
-      for(const name of names){
-        const branch=walk(children.filter(c=>c.name===name),[...path,{name}]);
-        if(!branch)return null;result.push(...branch);if(result.length>limit)return null;
-      }
-      return result;
-    }
-    if(observed.some(v=>v.children?.length))return null;
-    return [path];
+export function sharedFields(shape:Shape):Shape[]{
+  // Stable table columns for a matrix or array of structs; never invent values.
+  const byKey=new Map<string,Shape>();
+  for(const row of shape.children)for(const ch of row.children){
+    const key=identity(ch);if(!byKey.has(key))byKey.set(key,ch);
   }
-  const paths=walk(roots,[]);
-  return paths&&paths.length<=limit?paths.filter(p=>p.length).map(path=>({path,label:path.map(memberLabel).join("")})):[];
-}
-
-// Project one recorded group per loop onto the static source. The complete
-// trace is untouched. Full mode retains the original group tree.
-export type GroupNode=Extract<TraceNode,{kind:"group"}>;
-export function projectRounds(tree:TraceNode[],selection:Record<string,number>,full:string[]):{nodes:TraceNode[];loops:GroupNode[]}{
-  const loops:GroupNode[]=[];
-  function visit(nodes:TraceNode[]):TraceNode[]{
-    const out:TraceNode[]=[];
-    for(const n of nodes){
-      if(n.kind!=="group"||n.groupType!=="loop"){out.push(n);continue;}
-      loops.push(n);
-      if(full.includes(n.key)){out.push(n);continue;}
-      const index=Math.max(0,Math.min(n.children.length-1,selection[n.key]??0));
-      const child=n.children[index];
-      if(child)out.push(...visit(child.kind==="group"?child.children:[child]));
-    }
-    return out;
-  }
-  return {nodes:visit(tree),loops};
-}
-// Report only comparable adjacent changes within this group. A single slot
-// always occupies the same data coordinate as it does on observation rows.
-export function slotSummary(run:Run,n:TraceNode,c:Column,slot:LeafSlot):{text:string;changed:boolean;title:string}{
-  if(n.kind!=="group")return {text:"",changed:false,title:""};
-  const ss=flatten(n.children);
-  const observed=ss.map(s=>{const v=values(s,c);return v.length===1?atPath(v[0],slot.path):undefined;});
-  const changes:string[]=[];
-  for(let i=1;i<ss.length;i++){
-    const before=atPath(previousValue(run,ss[i],c),slot.path),after=observed[i];
-    if(ss[i].id===ss[i-1].id+1&&after&&before&&valueChanged(before,after))changes.push(label(before)+" → "+label(after));
-  }
-  if(changes.length===1)return {text:changes[0],changed:true,title:"组内相邻观察差异："+changes[0]};
-  if(changes.length>1)return {text:changes.length+" 次变化",changed:true,title:changes.join("；")};
-  const first=observed.find(v=>v?.status==="observed"&&v.value!==undefined);
-  return {text:first?label(first):"?",changed:false,title:first?"组内首个已记录值":"未记录可用值"};
-}
-export function slotHeaders(slots:LeafSlot[]):{suffix:string;labels:string[]}{
-  const suffix=slots.length&&slots.every(s=>s.path.length===2&&s.path[0].index!==undefined&&s.path[1].index===undefined&&s.path[1].name===slots[0].path[1].name)?"[]."+slots[0].path[1].name:"";
-  return {suffix,labels:slots.map(s=>suffix?"["+s.path[0].index+"]":s.label)};
+  const fields=[...byKey.values()];
+  if(fields.every(f=>f.index!==undefined))fields.sort((a,b)=>a.index!-b.index!);
+  return fields;
 }
