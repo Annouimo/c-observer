@@ -9,7 +9,8 @@ export type Snapshot = { id: number; location: Location; frames: Frame[]; global
 export type Source = { path: string; text: string };
 export type Run = { session: { sources: Source[]; backend: string }; snapshots: Snapshot[]; reason: string; message?: string; cleanup_error?: string; diagnostics?: {severity: string; message: string}[]; exit_code?: number; output: { stdout?: string; stderr?: string; stdout_truncated?: boolean; stderr_truncated?: boolean } };
 export type Document = { run: Run; synthetic: boolean; stdin: string; expected: string | null; comparison: string; description?: string };
-export type Column = { name: string; fn?: string; global?: boolean };
+export type Member = {name:string; index?:number};
+export type Column = { name: string; fn?: string; global?: boolean; path?: Member[] };
 export const MAX_BYTES = 128 * 1024 * 1024;
 const bytes = (s: string) => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 const decode = (s: string) => new TextDecoder().decode(bytes(s));
@@ -58,13 +59,46 @@ export function outputText(s?: string) { return decode(s ?? ""); }
 export function sourceLine(run: Run, loc: Location): string {
   return run.session.sources.find(s => s.path === loc.file)?.text.split(/\r?\n/)[loc.line - 1] ?? "";
 }
-export const columnKey = (c: Column) => JSON.stringify([c.name, c.fn ?? "", !!c.global]);
-export function values(s: Snapshot, c: Column): Variable[] {
+export const columnKey = (c: Column) => JSON.stringify([c.name, c.fn ?? "", !!c.global, c.path ?? []]);
+function rootValues(s: Snapshot, c: Column): Variable[] {
   if (c.global) return (s.globals ?? []).filter(v => v.name === c.name);
   const frame = s.frames[0];
   const fn = frame?.location.function ?? s.location.function;
   const locals = !c.fn || c.fn === fn ? (frame?.variables ?? []).filter(v => v.name === c.name) : [];
   return c.fn ? locals : [...locals, ...(s.globals ?? []).filter(v => v.name === c.name)];
+}
+export function values(s: Snapshot,c: Column): Variable[] {
+  let found=rootValues(s,c);
+  for(const part of c.path??[]) found=found.flatMap(v=>v.status==="observed"?(v.children??[]).filter(ch=>ch.name===part.name&&ch.index===part.index):[]);
+  return found;
+}
+export function memberLabel(m:Member):string { return m.index===undefined?"."+m.name:"["+m.index+"]"; }
+export function columnLabel(c:Column):string { return c.name+(c.path??[]).map(memberLabel).join(""); }
+export function memberColumns(v:Variable,c:Column):Column[] {
+  return (v.children??[]).map(ch=>({...c,path:[...(c.path??[]),{name:ch.name,index:ch.index}]}));
+}
+export type Difference={path:string;before:string;after:string};
+export function differences(previous:Variable|undefined,value:Variable,path="",limit=8):Difference[] {
+  if(limit<=0||!previous||previous.status!=="observed"||value.status!=="observed"||previous.type!==value.type||previous.kind!==value.kind) return [];
+  if(value.children?.length) {
+    const out:Difference[]=[];
+    for(const ch of value.children) {
+      out.push(...differences(childBefore(previous,ch),ch,path+memberLabel(ch),limit-out.length));
+      if(out.length>=limit) break;
+    }
+    return out;
+  }
+  return valueChanged(previous,value)?[{path,before:label(previous),after:label(value)}]:[];
+}
+export function previewValues(v:Variable,limit=6):{path:string;value:string}[] {
+  const out:{path:string;value:string}[]=[];
+  function visit(x:Variable,path:string) {
+    if(out.length>=limit) return;
+    if(x.status==="observed"&&x.children?.length) for(const ch of x.children) {visit(ch,path+memberLabel(ch));if(out.length>=limit) break;}
+    else out.push({path,value:label(x)});
+  }
+  visit(v,"");
+  return out;
 }
 export function comparable(v: Variable): boolean {
   return v.status === "observed" && !v.value_truncated &&
@@ -116,59 +150,112 @@ export function tokenize(text: string): Token[][] {
   }
   return result;
 }
-export type TraceNode = { kind:"observation"; snapshot: Snapshot } | { kind:"group"; key:string; label:string; children:TraceNode[] };
+export type TraceNode = { kind:"observation"; snapshot: Snapshot } | { kind:"group"; key:string; label:string; children:TraceNode[]; anchor:Location; groupType:"loop"|"round"|"call" };
 export function flatten(nodes: TraceNode[]): Snapshot[] {
   return nodes.flatMap(n => n.kind === "observation" ? [n.snapshot] : flatten(n.children));
 }
-// Conservative grouping only: repeated observed loop headers within the same
-// file, function and depth, with consecutive nonempty body segments. No
-// fabricated iterations, condition outcomes, return values or observations.
-export function groupTrace(run: Run): TraceNode[] {
-  const headers = new Set<string>();
-  for (const source of run.session.sources) tokenize(source.text).forEach((tokens,i) => {
-    if(tokens.some(t => t.kind === "keyword" && ["for","while","do"].includes(t.text))) headers.add(JSON.stringify([source.path,i+1]));
-  });
-  const key = (s: Snapshot) => JSON.stringify([s.location.file,s.location.line]);
-  const same = (a: Snapshot,b: Snapshot) => a.location.file === b.location.file && a.location.function === b.location.function && a.frames.length === b.frames.length;
-  const obs = (s: Snapshot): TraceNode => ({kind:"observation",snapshot:s});
-  // At most 64 nested groups; raw observations are always preserved.
-  function build(ss: Snapshot[], level: number): TraceNode[] {
-    if(level >= 64) return ss.map(obs);
-    const out: TraceNode[] = [];
-    for(let i=0;i<ss.length;) {
-      const start=ss[i], depth=start.frames.length;
-      if(depth>0 && i+1<ss.length && ss[i+1].frames.length>depth) {
-        let j=i+1; while(j<ss.length && ss[j].frames.length>depth) j++;
-        out.push(obs(start), {kind:"group",key:"call-"+ss[i+1].id,label:"较深调用观察 · "+(ss[i+1].location.function??"未知函数"),children:build(ss.slice(i+1,j),level+1)});
-        i=j; continue;
-      }
-      if(headers.has(key(start))) {
+type LoopRange={file:string;start:number;end:number};
+export function loopRanges(source:Source):LoopRange[] {
+  const ts=tokenize(source.text).flatMap((line,i)=>line.filter(t=>t.kind!=="comment"&&t.kind!=="literal"&&t.text.trim()).map(t=>({...t,line:i+1})));
+  const out:LoopRange[]=[];
+  function close(i:number,open:string,close:string):number {
+    let depth=0;
+    for(let j=i;j<ts.length;j++){if(ts[j].text===open)depth++;else if(ts[j].text===close&&--depth===0)return j;}
+    return -1;
+  }
+  for(let i=0;i<ts.length;i++) {
+    if(ts[i].kind!=="keyword"||!["for","while","do"].includes(ts[i].text))continue;
+    let j=i+1;
+    if(ts[i].text!=="do"){if(ts[j]?.text!=="(")continue;j=close(j,"(",")")+1;if(j<=0)continue;}
+    let end=-1;
+    if(ts[j]?.text==="{")end=close(j,"{","}");
+    else if(ts[j]&&![";","for","while","do","if","switch","else"].includes(ts[j].text)){
+      // Common unbraced statement only. Ambiguous nested controls stay raw.
+      let depth=0;
+      for(let k=j;k<ts.length;k++){const t=ts[k].text;if(t==="("||t==="[")depth++;if(t===")"||t==="]")depth--;if(t==="{"||t==="}")break;if(t===";"&&depth===0){end=k;break;}}
+    }
+    if(end>=j&&ts[end].line>ts[i].line)out.push({file:source.path,start:ts[i].line,end:ts[end].line});
+  }
+  return out.sort((a,b)=>a.start-b.start||b.end-a.end);
+}
+const sameContext=(a:Snapshot,b:Snapshot)=>a.location.file===b.location.file&&a.location.function===b.location.function&&a.frames.length===b.frames.length;
+const observation=(s:Snapshot):TraceNode=>({kind:"observation",snapshot:s});
+// Presentation hints only. Every original snapshot appears exactly once,
+// and flatten(groupTrace(run)) retains the original time order.
+export function groupTrace(run:Run):TraceNode[] {
+  const ranges=run.session.sources.flatMap(loopRanges);
+  function build(ss:Snapshot[],level:number,excluded:LoopRange[]=[]):TraceNode[]{
+    if(level>=32)return ss.map(observation);
+    const out:TraceNode[]=[];
+    for(let i=0;i<ss.length;){
+      const first=ss[i],depth=first.frames.length;
+      const candidates=ranges.filter(r=>!excluded.includes(r)&&r.file===first.location.file&&first.location.line>=r.start&&first.location.line<=r.end);
+      let grouped=false;
+      for(const r of candidates){
         let j=i+1;
-        const anchors=[i];
-        // Bound by same-context backward jump or a different source/function.
-        // Only group exact repeated header-to-header segments with at least one
-        // body observation; the last header remains a separate raw observation.
-        for(;j<ss.length;j++) {
-          if(!same(start,ss[j]) || ss[j].location.line<start.location.line) break;
-          if(key(start)===key(ss[j])) anchors.push(j);
-          // If another loop header occurs, the conservative first pass stops.
-          else if(headers.has(key(ss[j]))) break;
+        while(j<ss.length){
+          const t=ss[j];
+          if(depth>0&&t.frames.length>depth){j++;continue;}
+          if(!sameContext(first,t)||t.location.line<r.start||t.location.line>r.end)break;
+          j++;
         }
-        let end=1;
-        while(end<anchors.length && anchors[end]-anchors[end-1]>1) end++;
-        if(end>=3) {
-          const children: TraceNode[]=[];
-          for(let a=0;a<end-1;a++) {
-            const slice=ss.slice(anchors[a],anchors[a+1]);
-            children.push({kind:"group",key:"repeat-"+slice[0].id,label:"片段 "+(a+1),children:slice.map(obs)});
-          }
-          out.push({kind:"group",key:"loop-"+start.id,label:"重复入口 · "+start.location.line+" 行 · "+children.length+" 组",children});
-          i=anchors[end-1]; continue;
+        const startsAtHeader=first.location.line===r.start;
+        const anchors:number[]=[];
+        for(let k=i;k<j;k++)if(sameContext(first,ss[k])&&ss[k].location.line===r.start)anchors.push(k);
+        const parts:Snapshot[][]=[];
+        let tail:Snapshot[]=[];
+        if(startsAtHeader){
+          for(let a=0;a+1<anchors.length;a++)if(anchors[a+1]-anchors[a]>1)parts.push(ss.slice(anchors[a],anchors[a+1]));else {parts.length=0;break;}
+          if(parts.length>=2)tail=ss.slice(anchors.at(-1)!,j);
+        }else{
+          let k=i;
+          for(const a of anchors){if(a>k){parts.push(ss.slice(k,a+1));k=a+1;}else{parts.length=0;break;}}
+          if(parts.length>=2)tail=ss.slice(k,j);
         }
+        if(parts.length<2)continue;
+        const anchor={...first.location,line:r.start};
+        const rounds:TraceNode[]=parts.map((p,n)=>({kind:"group",groupType:"round",key:"round-"+p[0].id+"-"+r.start,label:"第 "+(n+1)+" 组观察",anchor,children:build(p,level+1,[...excluded,r])}));
+        out.push({kind:"group",groupType:"loop",key:"loop-"+first.id+"-"+r.start,label:rounds.length+" 组重复观察",anchor,children:rounds});
+        out.push(...build(tail,level+1,[...excluded,r]));
+        i=j;grouped=true;break;
       }
-      out.push(obs(start)); i++;
+      if(grouped)continue;
+      if(depth>0&&i+1<ss.length&&ss[i+1].frames.length>depth){
+        let j=i+1;while(j<ss.length&&ss[j].frames.length>depth)j++;
+        out.push(observation(first),{kind:"group",groupType:"call",key:"call-"+ss[i+1].id,label:(ss[i+1].location.function??"未知函数")+" · 调用观察",anchor:first.location,children:build(ss.slice(i+1,j),level+1)});
+        i=j;continue;
+      }
+      out.push(observation(first));i++;
     }
     return out;
   }
   return build(run.snapshots,0);
+}
+export type SourceRow={line:number;tokens:Token[];nodes:TraceNode[];count:number;fn?:string};
+// Static source is the document skeleton. Dynamic nodes are attached, never
+// used to fabricate states for lines lacking an observation. Unknown locations
+// remain accessible in the chronological view / unmapped section.
+export function sourceDocument(run:Run,path:string,tree=groupTrace(run)):{rows:SourceRow[];unmapped:TraceNode[]} {
+  const source=run.session.sources.find(s=>s.path===path);
+  const rows:SourceRow[]=source?tokenize(source.text).map((tokens,i)=>({line:i+1,tokens,nodes:[],count:0})):[];
+  for(const s of run.snapshots)if(s.location.file===path&&rows[s.location.line-1]){
+    const row=rows[s.location.line-1];row.count++;row.fn??=s.location.function;
+  }
+  const unmapped:TraceNode[]=[];
+  for(const node of tree){
+    const loc=node.kind==="observation"?node.snapshot.location:node.anchor;
+    if(loc.file===path&&rows[loc.line-1])rows[loc.line-1].nodes.push(node);
+    else if(!run.session.sources.some(s=>s.path===loc.file&&loc.line>0&&loc.line<=s.text.split(/\r?\n/).length))unmapped.push(node);
+  }
+  return {rows,unmapped};
+}
+export function groupDifferences(run:Run,n:TraceNode,c:Column,limit=3):Difference[]{
+  const out:Difference[]=[];
+  if(n.kind!=="group")return out;
+  for(const s of flatten(n.children)){
+    const v=values(s,c);
+    if(v.length===1)out.push(...differences(previousValue(run,s,c),v[0],"",limit-out.length));
+    if(out.length>=limit)break;
+  }
+  return out;
 }

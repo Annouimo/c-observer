@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { parseDocument, tokenize, groupTrace, flatten, values, changed, label, valueChanged, type Run } from "./observation.ts";
+import { parseDocument, tokenize, groupTrace, flatten, values, changed, label, valueChanged, sourceDocument, differences, memberColumns, groupDifferences, loopRanges, type Run } from "./observation.ts";
 const fixture=JSON.parse(readFileSync(new URL("../../../testdata/snapshots/wrong-index.json",import.meta.url),"utf8"));
 test("fixture is explicitly synthetic and preserves observed values",()=>{
   const doc=parseDocument(fixture);
@@ -50,4 +50,40 @@ test("Go nil slices in a failed run are accepted",()=>{
   const x=structuredClone(fixture);delete x.synthetic;x.format="c-observer-record";x.schema_version=1;x.run.session.backend="gdb-mi";
   x.stdin="";x.expected_stdout=null;x.run.snapshots=null;x.run.session.sources=null;x.run.reason="compile_failed";
   assert.equal(parseDocument(x).run.snapshots.length,0);
+});
+
+test("static skeleton retains all lines of sparse wrong-index fixture",()=>{
+  const {run}=parseDocument(fixture);
+  const tree=groupTrace(run);
+  const loop=tree.find(n=>n.kind==="group"&&n.groupType==="loop");
+  assert.ok(loop&&loop.kind==="group");
+  assert.equal(loop.anchor.line,7);
+  assert.equal(loop.children.length,2);
+  assert.deepEqual(flatten(loop.children).map(s=>s.location.line),[8,9,7,8,9,7]);
+  assert.deepEqual(flatten(tree),run.snapshots);
+  const {rows}=sourceDocument(run,"main.c",tree);
+  assert.equal(rows.length,run.session.sources[0].text.split(/\r?\n/).length);
+  assert.equal(rows[0].tokens.map(t=>t.text).join(""),"#include <stdio.h>");
+  assert.equal(rows[4].nodes.length,0);
+  assert.equal(rows[6].nodes[0],loop);
+  assert.equal(rows[7].count,2);
+  assert.equal(rows[7].nodes.length,0);
+  assert.equal(groupDifferences(run,loop,{name:"a",fn:"main"})[0].path,"[0].score");
+});
+test("member columns retain recorded indices and differences",()=>{
+  const {run}=parseDocument(fixture), c={name:"a",fn:"main"};
+  const v=values(run.snapshots[1],c)[0], child=memberColumns(v,c)[0];
+  const member=memberColumns(v.children![0],child)[0];
+  assert.equal(values(run.snapshots[2],member)[0].value,"17");
+  assert.deepEqual(differences(v,values(run.snapshots[2],c)[0]),[{path:"[0].score",before:"10",after:"17"}]);
+});
+test("nested calls preserve raw order and anchor to caller",()=>{
+  const run:Run={...parseDocument(fixture).run,session:{backend:"synthetic",sources:[{path:"x.c",text:"int f(){\n return 1;\n}\nint main(){\n f();\n return 0;\n}\n"}]},snapshots:[{line:5,fn:"main",depth:1},{line:2,fn:"f",depth:2},{line:6,fn:"main",depth:1}].map((x,id)=>({id,location:{file:"x.c",line:x.line,function:x.fn},frames:Array.from({length:x.depth},()=>({location:{file:"x.c",line:x.line,function:x.fn},variables:[]}))}))};
+  const tree=groupTrace(run);
+  assert.deepEqual(flatten(tree),run.snapshots);
+  const row=sourceDocument(run,"x.c",tree).rows[4];
+  assert.equal(row.nodes.length,2);assert.equal(row.nodes[1].kind,"group");
+});
+test("loop ranges ignore braces in literals and comments",()=>{
+  assert.deepEqual(loopRanges({path:"x.c",text:'// for (;;) {\nfor (;;) {\n puts("}");\n}\n'}),[{file:"x.c",start:2,end:4}]);
 });
