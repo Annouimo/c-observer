@@ -7,3 +7,5 @@
 开发：gui/frontend 内 npm install、npm test、npm run build；仓库根 go mod tidy、go test ./internal/... ./cmd/...、go vet ./internal/... ./cmd/...；gui 内 go build -tags production。CI 默认 Mac arm64，Windows 按需，准备阶段验证共享包。可在目标机器设置 C_OBSERVER_REAL_APP=1 后运行 go test -run TestRealApplication ./internal/app（需要本机编译器及调试器）。真机运行、窗口关闭清理及 Companion 联调仍需验收。
 
 主界面仍为数据优先、时间线驱动：点击数据标记变化，拖动/点击轨道、点击标记带、滚轮、左右键、Shift+左右键、Home/End、编号精确定位；源码和样例整体点击查看详情。遵循减少动效设置。
+
+点击数据同时关注变化并显示有额外信息的详情；点击同一对象、主数据区空白或 Esc 取消。详情内点击成员保留父对象。字符缓冲区默认摘要，详细字符和有限指向内容按需显示；不推断未记录值。

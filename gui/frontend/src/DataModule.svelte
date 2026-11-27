@@ -1,32 +1,18 @@
 <script lang="ts">
-  import {tick} from "svelte";
   import Self from "./DataModule.svelte";
-  import {columnKey,columnLabel,member,memberLabel,childValue,observedChange,displayValue,sharedFields,label,arraySegments,foldValue,moduleWidth,coverageNote,statusHint,type Shape,type Variable,type Column} from "./observation";
-  let {shape,column,value,previous,active,onSelect,root=false,ambiguous=[],pulses=new Set<string>(),pulseSerial=0}:{
+  import {columnKey,columnLabel,member,memberLabel,childValue,observedChange,displayValue,sharedFields,label,arraySegments,foldValue,moduleWidth,coverageNote,statusHint,compactValue,stringSummary,hasDetail,previewChildren,type Shape,type Variable,type Column} from "./observation";
+  let {shape,column,value,previous,active,onSelect,root=false,ambiguous=[],pulses=new Set<string>(),pulseSerial=0,full=false}:{
     shape:Shape;column:Column;value?:Variable;previous?:Variable;active:string;
-    onSelect:(c:Column)=>void;root?:boolean;ambiguous?:Variable[];pulses?:Set<string>;pulseSerial?:number;
+    onSelect:(c:Column)=>void;root?:boolean;ambiguous?:Variable[];pulses?:Set<string>;pulseSerial?:number;full?:boolean;
   }=$props();
   let chosen=$derived(active===columnKey(column));
   let diff=$derived(observedChange(previous,value));
+  let summary=$derived(stringSummary(value));
+  let shown=$derived(full?shape.children:hasDetail(shape)?previewChildren(shape):shape.children);
   let compound=$derived(shape.children.length>0||["array","struct","union"].includes(shape.kind));
-  let fields=$derived(shape.kind==="array"?sharedFields(shape):[]);
-  let tabular=$derived(fields.length>0&&shape.children.every(c=>["array","struct","unknown"].includes(c.kind))&&fields.every(c=>!c.children.length));
-  let segments=$derived(shape.kind==="array"?arraySegments(shape):[]);
-  let expanded=$state<number[]>([]);
-  let arrayNode:HTMLDivElement;
-  let rangeMotion:Animation[]=[];
-  let rangeRequest=0;
-  async function toggleRange(i:number){
-    expanded=expanded.includes(i)?expanded.filter(x=>x!==i):[...expanded,i];
-    const request=++rangeRequest;
-    rangeMotion.forEach(a=>a.cancel());rangeMotion=[];
-    await tick();
-    if(request!==rangeRequest||matchMedia("(prefers-reduced-motion: reduce)").matches)return;
-    const nodes=arrayNode?.querySelectorAll<HTMLElement>('[data-range="'+i+'"],[data-range-item="'+i+'"]');
-    if(!nodes)return;
-    // Animate only newly revealed local content, never the whole data layout.
-    for(const el of Array.from(nodes).slice(0,12))if(el.animate)rangeMotion.push(el.animate([{opacity:.25,transform:"translateY(-3px)"},{opacity:1,transform:"translateY(0)"}],{duration:160,easing:"ease-out"}));
-  }
+  let fields=$derived(shape.kind==="array"?sharedFields({...shape,children:shown}):[]);
+  let tabular=$derived(fields.length>0&&shape.children.every(c=>["array","struct","unknown"].includes(c.kind))&&fields.every(c=>!c.children.length||!full&&c.kind==="string"));
+  let segments=$derived(shape.kind==="array"?(full?shown.map(c=>[c]):arraySegments({...shape,children:shown})):[]);
   function flash(node:HTMLElement,initial:number){
     let a:Animation|undefined;
     function update(serial:number){
@@ -45,34 +31,38 @@
   let title=$derived(root?column.name:memberLabel(shape).replace(/^\./,""));
 </script>
 {#if ambiguous.length>1}
-  <div class="module ambiguous"><strong>{title}</strong><small>同名 {ambiguous.length} 项，无法唯一对应</small><details><summary>已记录数据</summary><pre>{JSON.stringify(ambiguous,null,2)}</pre></details></div>
+  <div class="module ambiguous"><strong>{title}</strong><small>同名 {ambiguous.length} 项，无法唯一对应</small>{#each ambiguous as item}<small>{item.type} · {compactValue(item)}</small>{/each}</div>
+{:else if !full&&shape.kind==="string"}
+  <button use:flash={pulse(column)} class="module scalar string-summary" class:chosen class:diff aria-pressed={chosen} onclick={()=>onSelect(column)} title={columnLabel(column)+" · "+statusHint(value,root)}><span class="scalar-name">{title}{shape.arrayLength!==undefined?"["+shape.arrayLength+"]":""} =</span><span class="number">{compactValue(value,root)}</span></button>
 {:else if compound}
-  <section class="module compound" class:chosen class:root class:absent={!value&&root}>
+  <section class="module compound" class:full class:chosen class:root class:absent={!value&&root}>
     <button class="heading" aria-pressed={chosen} onclick={()=>onSelect(column)} title={columnLabel(column)+" · "+(value?value.type+" · "+label(value):displayValue(value,root))}>
-      <span>{title}{shape.kind==="array"&&shape.arrayLength!==undefined?"["+shape.arrayLength+"]":""}</span>
-      {#if coverage}<small title="本次记录覆盖情况">{coverage}</small>{/if}
+      <span>{title}{(shape.kind==="array"||shape.kind==="string")&&shape.arrayLength!==undefined?"["+shape.arrayLength+"]":""}</span>
+      {#if shape.kind==="pointer"}<small class="address" title={compactValue(value)}>{compactValue(value)}</small>{:else if coverage}<small title="本次记录覆盖情况">{coverage}</small>{/if}
       {#if diff&&(!shape.children.length||shape.children.length>8)}<span class="dot" title="与前一观察有已知差异"></span>{/if}
     </button>
-    {#if tabular}
+    {#if full&&shape.kind==="string"}
+      {#if summary}<div class="string-value">{summary.text}</div>{/if}
+      <div class="array inner-scroll">{#each shown as ch}{@const c=member(column,ch)}{@const v=childValue(value,ch)}{@const p=childValue(previous,ch)}<button use:flash={pulse(c)} class="element character" class:tail={summary?.end!==undefined&&ch.index!==undefined&&ch.index>summary.end} class:terminator={summary?.end!==undefined&&ch.index===summary.end} class:chosen={active===columnKey(c)} class:diff={observedChange(p,v)} onclick={()=>onSelect(c)} title={columnLabel(c)+": "+statusHint(v)}><small>{ch.index??ch.name}</small><span>{displayValue(v)}</span></button>{/each}</div>
+    {:else if tabular}
       <div class="inner-scroll"><table><colgroup><col style:width="38px"/>{#each fields as field}<col style:width={Math.max(45,8*Math.max(field.name.length,field.width??1)+16)+"px"}/>{/each}</colgroup><thead><tr><th aria-label="下标"></th>{#each fields as field}<th>{memberLabel(field).replace(/^\./,"")}</th>{/each}</tr></thead>
-        <tbody>{#each shape.children as row}
+        <tbody>{#each shown as row}
           {@const rv=childValue(value,row)}{@const rp=childValue(previous,row)}{@const rc=member(column,row)}
           <tr><th><button class="index" class:chosen={active===columnKey(rc)} aria-pressed={active===columnKey(rc)} onclick={()=>onSelect(rc)}>{row.index??row.name}</button></th>
             {#each fields as field}
               {@const v=childValue(rv,field)}{@const p=childValue(rp,field)}{@const c=member(rc,field)}
-              <td><button use:flash={pulse(c)} class="cell" class:chosen={active===columnKey(c)} class:diff={observedChange(p,v)} class:unknown={!v||v.status!=="observed"} aria-pressed={active===columnKey(c)} onclick={()=>onSelect(c)} title={columnLabel(c)+": "+statusHint(v)+(observedChange(p,v)?"（之前 "+displayValue(p)+"）":"")}>{displayValue(v)}</button></td>
+              <td><button use:flash={pulse(c)} class="cell" class:chosen={active===columnKey(c)} class:diff={observedChange(p,v)} class:unknown={!v||v.status!=="observed"} aria-pressed={active===columnKey(c)} onclick={()=>onSelect(c)} title={columnLabel(c)+": "+statusHint(v)+(observedChange(p,v)?"（之前 "+displayValue(p)+"）":"")}>{compactValue(v)}</button></td>
             {/each}
           </tr>
         {/each}</tbody>
       </table></div>
     {:else if shape.kind==="array"&&shape.children.every(c=>!c.children.length&&!["array","struct","union"].includes(c.kind))}
-      <div class="array inner-scroll" bind:this={arrayNode}>
+      <div class="array inner-scroll">
         {#each segments as segment,i}
           {@const folded=foldValue(segment,value,previous)}
-          {#if folded!==undefined&&!expanded.includes(i)}
-            <button class="range" data-range={i} onclick={()=>toggleRange(i)} title="展开全部已记录元素"><small>{segment[0].index}–{segment.at(-1)?.index}</small><span>{folded} × {segment.length} ›</span></button>
+          {#if folded!==undefined}
+            <button class="range" data-range={i} onclick={()=>onSelect(column)} title="关注数组并查看完整已记录元素"><small>{segment[0].index}–{segment.at(-1)?.index}</small><span>{folded} × {segment.length} ›</span></button>
           {:else}
-            {#if expanded.includes(i)&&folded!==undefined}<button class="range-close" data-range={i} onclick={()=>toggleRange(i)}>收起 {segment[0].index}–{segment.at(-1)?.index}</button>{/if}
             {#each segment as ch}
               {@const c=member(column,ch)}{@const v=childValue(value,ch)}{@const p=childValue(previous,ch)}
               <button use:flash={pulse(c)} data-range-item={segment.length>1?i:undefined} class="element" style:width={Math.max(42,Math.min(350,8*Math.max(ch.width??1,String(ch.index??ch.name).length)+16))+"px"} class:chosen={active===columnKey(c)} class:diff={observedChange(p,v)} class:unknown={!v||v.status!=="observed"} aria-pressed={active===columnKey(c)} onclick={()=>onSelect(c)} title={columnLabel(c)+": "+statusHint(v)+(observedChange(p,v)?"（之前 "+displayValue(p)+"）":"")}>
@@ -84,16 +74,17 @@
       </div>
     {:else}
       <div class="members inner-scroll">
-        {#each shape.children as ch}
-          <div class="nested" style:--ideal={moduleWidth(ch)+"px"}><Self shape={ch} column={member(column,ch)} value={childValue(value,ch)} previous={childValue(previous,ch)} {active} {onSelect} {pulses} {pulseSerial}/></div>
+        {#each shown as ch}
+          <div class="nested" style:--ideal={moduleWidth(ch)+"px"}><Self shape={ch} column={member(column,ch)} value={childValue(value,ch)} previous={childValue(previous,ch)} {active} {onSelect} {pulses} {pulseSerial} {full}/></div>
         {/each}
         {#if !shape.children.length}<small>没有已记录成员</small>{/if}
       </div>
     {/if}
+    {#if !full&&shown.length<shape.children.length}<button class="more" onclick={()=>onSelect(column)} title="关注并查看全部已记录数据">… {shown.length}/{shape.children.length}</button>{/if}
   </section>
 {:else}
   <button use:flash={pulse(column)} class="module scalar" class:chosen class:diff class:root class:unknown={!value||value.status!=="observed"} aria-pressed={chosen} onclick={()=>onSelect(column)} title={columnLabel(column)+" · "+shape.type+": "+statusHint(value,root)+(diff?"（之前 "+displayValue(previous)+"）":"")}>
-    <span class="scalar-name">{title} =</span><span class="number">{displayValue(value,root)}</span>
+    <span class="scalar-name">{title} =</span><span class="number">{compactValue(value,root)}</span>
   </button>
 {/if}
 <style>
@@ -102,8 +93,8 @@
   button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent}
   button:hover{background:var(--hover)}button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
   .scalar{display:flex;align-items:baseline;gap:5px;text-align:left;padding:5px 8px;width:100%;min-width:0;min-height:30px;position:relative}
-  .scalar-name{font:12px var(--mono);color:var(--muted);flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .number{font:600 14px/1.35 var(--mono);flex:0 0 auto;max-width:65%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+  .scalar-name{font:12px var(--mono);color:var(--muted);flex:0 0 auto;min-width:0;max-width:55%;overflow-wrap:anywhere;white-space:normal}
+  .number{font:600 14px/1.35 var(--mono);flex:0 1 auto;min-width:0;overflow-wrap:anywhere;white-space:normal}
   .scalar.diff .number{font-weight:700}
   .diff{color:var(--accent);background:var(--soft)}
   .unknown .number,.unknown.cell,.unknown.element{color:var(--muted)}
@@ -131,5 +122,13 @@
   .range-close{font:11px system-ui;color:var(--muted);border:1px dashed var(--line);padding:3px 7px}
   .cell{overflow:hidden;text-overflow:ellipsis}
   .diff.cell,.diff.element{font-weight:600}
+  .full .inner-scroll{max-height:none;overflow:visible}
+  .full .nested{max-width:100%}
+  .full .cell,.full .element span{white-space:normal;overflow-wrap:anywhere;overflow:visible}
+  .full table{table-layout:auto}
+  .string-value{padding:7px 9px;font:600 14px var(--mono);overflow-wrap:anywhere}
+  .character{min-width:48px;padding:4px 6px}.character.tail:not(.diff){color:var(--muted)}.character.terminator{border-style:dashed}
+  .more{display:block;width:100%;text-align:right;font:11px var(--mono);color:var(--muted);padding:4px 8px}
+  .address{max-width:70%;font-family:var(--mono)!important}
   .ambiguous{padding:8px}.ambiguous small{display:block}.ambiguous pre{max-height:200px;overflow:auto;white-space:pre-wrap}
 </style>

@@ -92,7 +92,7 @@ export type Shape={name:string;index?:number;kind:string;type:string;children:Sh
 export type Module={column:Column;shape:Shape};
 const identity=(v:{name:string;index?:number})=>v.index===undefined?"n:"+v.name:"i:"+v.index;
 function mergeShape(shape:Shape,v:Variable){
-  shape.width=Math.max(shape.width??1,displayValue(v).length);
+  shape.width=Math.max(shape.width??1,compactValue(v).length);
   if(v.status!=="observed"){shape.unstable=true;return;}
   if(!v.children?.length){
     if(!comparable(v))shape.unstable=true;
@@ -112,11 +112,11 @@ function mergeShape(shape:Shape,v:Variable){
 function newShape(v:Variable):Shape{return {name:v.name,index:v.index,kind:v.kind,type:v.type,children:[],arrayLength:v.array_length};}
 function finishShape(s:Shape){
   // Small declared arrays expose missing coordinates; no value is inferred.
-  if(s.kind==="array"&&s.arrayLength!==undefined&&s.arrayLength<=32&&s.children.every(c=>c.index!==undefined)){
+  if((s.kind==="array"||s.kind==="string")&&s.arrayLength!==undefined&&s.arrayLength<=32&&s.children.every(c=>c.index!==undefined)){
     const seen=new Set(s.children.map(c=>c.index));
     for(let i=0;i<s.arrayLength;i++)if(!seen.has(i))s.children.push({name:"["+i+"]",index:i,kind:"unknown",type:"",children:[]});
   }
-  if(s.kind==="array")s.children.sort((a,b)=>(a.index??Infinity)-(b.index??Infinity));
+  if(s.kind==="array"||s.kind==="string")s.children.sort((a,b)=>(a.index??Infinity)-(b.index??Infinity));
   for(const child of s.children)finishShape(child);
 }
 export function modules(run:Run):Module[]{
@@ -170,6 +170,7 @@ export function matchingPrevious(run:Run,s:Snapshot,c:Column):Variable|undefined
   if(before.length!==1||now.length!==1||!corresponding(before[0],now[0]))return undefined;
   let a:Variable|undefined=before[0],b:Variable|undefined=now[0];
   for(const part of c.path??[]){
+    if(a?.kind==="pointer"&&a.value!==b?.value)return undefined;
     a=childValue(a,part);b=childValue(b,part);
     if(!a||!b||!corresponding(a,b))return undefined;
   }
@@ -177,6 +178,7 @@ export function matchingPrevious(run:Run,s:Snapshot,c:Column):Variable|undefined
 }
 export function observedChange(before:Variable|undefined,now:Variable|undefined):boolean{
   if(!before||!now||before.status!=="observed"||now.status!=="observed"||!corresponding(before,now))return false;
+  if(now.kind==="pointer"&&before.value!==undefined&&now.value!==undefined&&!before.value_truncated&&!now.value_truncated&&before.value!==now.value)return true;
   if(now.children?.length){
     const seen=new Map<string,number>();for(const c of now.children)seen.set(identity(c),(seen.get(identity(c))??0)+1);
     return now.children.some(c=>seen.get(identity(c))===1&&observedChange(childValue(before,c),c));
@@ -227,7 +229,7 @@ export function visibleModules(list:Module[],s:Snapshot|undefined):Module[]{
 }
 export function isCompound(s:Shape){return !!s.children.length||["array","struct","union"].includes(s.kind);}
 export function moduleWidth(s:Shape):number{
-  if(!isCompound(s))return Math.max(86,Math.min(450,(s.name.length+(s.width??1)+4)*8+12));
+  if(!isCompound(s)||s.kind==="string")return Math.max(66,Math.min(480,(s.name.length+(s.width??1)+3)*8+20));
   const fields=s.kind==="array"?sharedFields(s):[];
   if(fields.length&&fields.every(c=>!isCompound(c)))return Math.max(180,Math.min(1100,42+fields.reduce((n,c)=>n+Math.max(45,Math.min(250,8*Math.max(c.name.length,c.width??1)+16)),0)));
   if(s.kind==="array"&&s.children.every(c=>!isCompound(c)))return Math.max(150,Math.min(1100,arraySegments(s).reduce((n,g)=>n+(g.length>1?126:Math.max(42,Math.min(240,8*Math.max(g[0].width??1,String(g[0].index??g[0].name).length)+16))),0)+14));
@@ -330,7 +332,7 @@ export function samplePreview(text:string|null,limit=160):string{
 export function coverageNote(shape:Shape,value:Variable|undefined,root=false):string{
   if(!value||value.status!=="observed")return displayValue(value,root);
   if(value.children_complete!==false)return "";
-  if(shape.kind==="array"&&value.array_length!==undefined){
+  if((shape.kind==="array"||shape.kind==="string")&&value.array_length!==undefined){
     const recorded=new Set((value.children??[]).filter(c=>c.index!==undefined&&c.index>=0&&c.index<value.array_length!).map(c=>c.index)).size;
     const visible=new Set(shape.children.filter(c=>c.index!==undefined&&c.index>=0&&c.index<value.array_length!).map(c=>c.index)).size;
     // A full coordinate grid exposes absent elements; if the backend flags
@@ -385,6 +387,7 @@ export function pulseTargets(run:Run,from:number,to:number,limit=12):Set<string>
   const roots:Column[]=[...(later.frames[0]?.variables??[]).map(v=>({name:v.name,fn})),...(later.globals??[]).map(v=>({name:v.name,global:true}))];
   function visit(c:Column,a:Variable|undefined,b:Variable|undefined){
     if(out.size>limit||!a||!b||!corresponding(a,b)||a.status!=="observed"||b.status!=="observed")return;
+    if(b.kind==="pointer"&&a.value!==b.value){if(observedChange(a,b))out.add(columnKey(c));return;}
     if(b.children?.length){
       const seen=new Set<string>();
       for(const ch of b.children){
@@ -414,4 +417,58 @@ export function replayFeedback(run:Run,from:number,to:number,mode:NavigationMode
     duration:rapid?85:135,
     pulses:rapid?new Set<string>():pulseTargets(run,from,to)
   };
+}
+
+
+// Decode a recorded single C char, not an expression or a memory read.
+// LLDB emits quoted chars; GDB may prepend their signed decimal value.
+export function charByte(v:Variable|undefined):number|undefined{
+  if(!v||v.status!=="observed"||v.value_truncated||v.value===undefined)return undefined;
+  const text=v.value.trim();
+  const num=text.match(/^(-?\d+)(?:\s+'(?:[^'\\]|\\.)*')?$/);
+  if(num){const n=Number(num[1]);if(n>=-128&&n<=255)return n&255;}
+  const m=text.match(/^'(.*)'$/s);if(!m)return undefined;
+  const s=m[1];
+  if(s.length===1&&s.charCodeAt(0)<=255)return s.charCodeAt(0);
+  if(/^\\x[0-9a-f]{1,2}$/i.test(s))return parseInt(s.slice(2),16);
+  if(/^\\[0-7]{1,3}$/.test(s)&&parseInt(s.slice(1),8)<=255)return parseInt(s.slice(1),8);
+  const escapes:Record<string,number>={"\\a":7,"\\b":8,"\\t":9,"\\n":10,"\\v":11,"\\f":12,"\\r":13,"\\\\":92,"\\'":39,'\\"':34,"\\?":63};
+  return escapes[s];
+}
+export function stringSummary(v:Variable|undefined):{text:string;end?:number;complete:boolean}|undefined{
+  if(!v||v.kind!=="string"||v.status!=="observed"||v.array_length===undefined)return undefined;
+  let text="",end:number|undefined;
+  for(let i=0;i<Math.min(v.array_length,128);i++){
+    const b=charByte(childValue(v,{name:"["+i+"]",index:i}));
+    if(b===undefined)break;
+    if(b===0){end=i;break;}
+    text+=b===34?'\\"':b===92?"\\\\":b===10?"\\n":b===13?"\\r":b===9?"\\t":b>=32&&b<127?String.fromCharCode(b):"\\x"+b.toString(16).padStart(2,"0");
+  }
+  if(end!==undefined)return {text:'"'+text+'"',end,complete:true};
+  if(!text&&v.value!==undefined&&v.value!=="")return {text:v.value+" · 摘要",complete:false};
+  return {text:'"'+text+'"…',complete:false};
+}
+export function compactValue(v:Variable|undefined,root=false):string{
+  if(v?.kind==="pointer"&&v.status==="observed")return (v.value??"?")+(v.value_truncated?"…":"");
+  return stringSummary(v)?.text??displayValue(v,root);
+}
+export function hasDetail(s:Shape):boolean{
+  if(s.kind==="string"||s.kind==="pointer")return s.children.length>0;
+  if(s.kind==="array")return s.children.length>8||s.children.some(c=>c.children.length>0&&hasDetail(c))||s.children.some(c=>c.important)&&s.children.length>6;
+  return s.children.length>6||s.children.some(hasDetail);
+}
+export function detailRoot(list:Module[],selected:Column|null):Module|undefined{
+  if(!selected)return undefined;
+  const key=columnKey({...selected,path:[]});
+  const m=list.find(m=>columnKey(m.column)===key);
+  return m&&hasDetail(m.shape)?m:undefined;
+}
+// Bounded main preview, stable across the run. Full pane uses original shape.
+export function previewChildren(s:Shape):Shape[]{
+  const limit=s.kind==="array"?8:6;
+  if(s.children.length<=limit)return s.children;
+  const chosen=new Set<Shape>(s.children.slice(0,Math.min(3,limit)));
+  for(const c of s.children)if(c.important&&chosen.size<limit)chosen.add(c);
+  for(const c of s.children)if(chosen.size<limit)chosen.add(c);
+  return s.children.filter(c=>chosen.has(c));
 }

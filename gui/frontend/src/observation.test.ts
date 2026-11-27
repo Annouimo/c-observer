@@ -197,3 +197,33 @@ test("live Go record envelope accepts nil slices and rejects invalid offsets",()
  const p=parseDocument(structuredClone(d));assert.equal(p.stdin,"5\n");assert.equal(p.expected,"");assert.equal(p.synthetic,false);
  d.run.snapshots[0].output_offsets.stdout_bytes=1;assert.throws(()=>parseDocument(d));
 });
+
+
+import {charByte,stringSummary,compactValue,hasDetail,detailRoot,previewChildren,type Variable,type Shape} from "./observation.ts";
+test("character buffer summary uses only contiguous recorded bytes and real terminator",()=>{
+  const c=(i:number,value:string):Variable=>({name:"["+i+"]",index:i,type:"char",kind:"scalar",status:"observed",value});
+  const v:Variable={name:"v",type:"char[10]",kind:"string",status:"observed",array_length:10,children:[c(0,"67 'C'"),c(1,"'E'"),c(2,"'\\0'"),c(3,"'\\x81'")]};
+  assert.deepEqual(stringSummary(v),{text:'"CE"',end:2,complete:true});
+  assert.equal(charByte(c(3,"'\\x81'")),129);
+  assert.equal(charByte(c(3,"-1 '\\377'")),255);
+  assert.equal(stringSummary({...v,children:[c(0,"'C'"),c(2,"'\\0'")]})?.complete,false);
+  assert.equal(stringSummary({...v,children:[c(0,"'C'"),c(1,"'E'")]})?.text,'"CE"…');
+});
+test("detail follows root focus and keeps parent context for selected child",()=>{
+  const r=loadFixture("adaptive-array").run,l=modules(r),m=l.find(x=>x.column.name==="a")!;
+  assert.ok(hasDetail(m.shape));
+  assert.equal(detailRoot(l,member(m.column,m.shape.children[0])),m);
+  assert.equal(detailRoot(l,null),undefined);
+  assert.ok(previewChildren(m.shape).length<=8);
+  assert.equal(m.shape.children.length,16);
+  assert.equal(detailRoot(modules(run()),{name:"i",fn:"main"}),undefined);
+});
+test("typed pointer address changes count even with children, never match old target member across addresses",()=>{
+  const r=run(),c={name:"ptr",fn:"main"},ch={name:"score",type:"int",kind:"scalar",status:"observed",value:"7"};
+  const ptr=(value:string):Variable=>({name:"ptr",type:"Team *",kind:"pointer",status:"observed",value,children:[ch]});
+  r.snapshots[0].frames[0].variables.push(ptr("0x10"));
+  r.snapshots[1].frames[0].variables.push(ptr("0x20"));
+  assert.equal(compactValue(ptr("0x10")),"0x10");
+  assert.deepEqual(changeEvents(r,c),[1]);
+  assert.equal(matchingPrevious(r,r.snapshots[1],member(c,ch)),undefined);
+});

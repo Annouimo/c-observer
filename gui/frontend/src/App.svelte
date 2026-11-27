@@ -1,10 +1,11 @@
 <script lang="ts">
   import {onMount} from "svelte";
+  import {fly} from "svelte/transition";
   import {connect,call,type Initial} from "./native";
   import example from "../../../testdata/snapshots/wrong-index.json";
   import DataModule from "./DataModule.svelte";
   import Timeline from "./Timeline.svelte";
-  import {parseDocument,modules,selectedValues,matchingPrevious,changeEvents,navigationTarget,replayFeedback,columnKey,columnLabel,outputText,MAX_BYTES,visibleModules,isCompound,moduleWidth,replayContext,sampleResult,outputRows,sourceTokens,samplePreview,type Column,type NavigationMode} from "./observation";
+  import {parseDocument,modules,selectedValues,matchingPrevious,changeEvents,navigationTarget,replayFeedback,columnKey,columnLabel,outputText,MAX_BYTES,visibleModules,isCompound,moduleWidth,detailRoot,replayContext,sampleResult,outputRows,sourceTokens,samplePreview,type Column,type NavigationMode} from "./observation";
   let doc=$state(parseDocument(example));
   let screen=$state<"starting"|"setup"|"running"|"replay">("starting");
   let native=$state(false);
@@ -89,6 +90,10 @@
   let current=$derived(doc.run.snapshots[step]);
   let total=$derived(doc.run.snapshots.length);
   let active=$derived(selected?columnKey(selected):"");
+  let detail=$derived(detailRoot(allModules,selected));
+  let detailValues=$derived(detail&&current?selectedValues(current,detail.column):[]);
+  let detailPrevious=$derived(detail&&current?matchingPrevious(doc.run,current,detail.column):undefined);
+  const detailMotion=()=>({x:10,duration:matchMedia("(prefers-reduced-motion: reduce)").matches?0:140,opacity:0.6});
   function cachedEvents(c:Column|null){if(!c)return [];const k=columnKey(c);if(!eventCache.has(k)){if(eventCache.size>=64)eventCache.delete(eventCache.keys().next().value!);eventCache.set(k,changeEvents(doc.run,c));}return eventCache.get(k)!;}
   let events=$derived(cachedEvents(selected));
 
@@ -123,11 +128,13 @@
     step=next;
   }
   function choose(c:Column){selected=active===columnKey(c)?null:c;}
+  function clearBlank(e:MouseEvent){const t=e.target as HTMLElement;if(!t.closest("button,.module-slot,aside,input,select,textarea")&&!window.getSelection()?.toString())selected=null;}
   function show(mode:"source"|"io"){
     rawOutput=false;dialogMode=mode;sourcePath=currentSource?.path??doc.run.session.sources[0]?.path??"";dialog.showModal();
   }
   function keys(e:KeyboardEvent){
     if(screen!=="replay"||dialog?.open||e.metaKey||e.ctrlKey||e.altKey||["INPUT","SELECT","TEXTAREA"].includes((e.target as HTMLElement)?.tagName))return;
+    if(e.key==="Escape"){selected=null;return;}
     const n=navigationTarget(e.key,e.shiftKey,step,total,events);
     if(n!==undefined){e.preventDefault();go(n);}
   }
@@ -193,7 +200,8 @@
     <span class="sample-row" class:bad={result==="输出不一致"}><small title={result}>实际{result==="输出不一致"?" ≠":""}</small><code>{samplePreview(actual)}</code></span>
   </button>
 </section>
-<main>
+<div class="data-workspace">
+<main class="data-main" onclick={clearBlank} role="presentation">
   {#if current}
     {#if incomplete}<div class="capture-note">部分变量未记录</div>{/if}
     {#each groups as group}
@@ -216,6 +224,10 @@
     {#if !list.length}<div class="empty">没有已记录变量</div>{/if}
   {:else}<div class="empty">没有观察记录 · {reasons[doc.run.reason]??doc.run.reason}{#if doc.run.message}<p>{doc.run.message}</p>{/if}</div>{/if}
 </main>
+{#if detail}<aside class="detail-pane" aria-label={"详情 · "+columnLabel(detail.column)} transition:fly={detailMotion()}>
+  {#key columnKey(detail.column)}<DataModule shape={detail.shape} column={detail.column} value={detailValues.length===1?detailValues[0]:undefined} previous={detailPrevious} {active} onSelect={choose} {pulses} pulseSerial={motion.serial} root ambiguous={detailValues} full/>{/key}
+</aside>{/if}
+</div>
 <Timeline {step} {total} {events} focus={selected?columnLabel(selected):""} onGo={go}/>
 <dialog bind:this={dialog}>
   <div class="dialog-head"><strong>{dialogMode==="source"?"冻结源码":"输入输出"}</strong><span class="spacer"></span><button onclick={()=>dialog.close()} aria-label="关闭">×</button></div>
@@ -253,7 +265,7 @@
   .file input{position:absolute;opacity:0;width:1px;height:1px}.file:focus-within{outline:2px solid var(--accent)}
   .bad{color:#b45309}
   @media(prefers-color-scheme:dark){.bad{color:#f3ad71}}
-  .context{display:grid;grid-template-columns:minmax(0,3fr) minmax(180px,2fr);gap:12px;padding:6px 14px 8px;border-bottom:1px solid var(--line)} .source-context{min-width:0;border:0;padding:0;background:transparent;text-align:left;overflow:hidden}.source-context:disabled{opacity:1;cursor:default}.source-context:hover:not(:disabled),.sample:hover{background:var(--hover)}.expand{font-size:12px;color:var(--muted);font-weight:400} .sample{display:grid;grid-template-rows:17px repeat(3,21px);min-width:0;text-align:left;border:0;border-left:1px solid var(--line);border-radius:0;padding:0 0 0 12px;overflow:hidden}.sample-title{display:flex;align-items:center;justify-content:space-between;color:var(--muted);font-size:11px}.sample-row{display:grid;grid-template-columns:42px minmax(0,1fr);gap:6px;align-items:center;min-width:0;min-height:0;height:21px;overflow:hidden}.sample-row code{display:block;min-width:0;max-width:100%;height:21px;overflow:hidden;text-overflow:ellipsis;white-space:pre;line-height:21px}.keyword{color:var(--accent);font-weight:600}.comment{color:var(--muted)}.literal{color:var(--muted)}
+  .context{display:grid;grid-template-columns:minmax(0,5fr) minmax(180px,3fr);gap:12px;padding:6px 14px 8px;border-bottom:1px solid var(--line)} .source-context{min-width:0;border:0;padding:0;background:transparent;text-align:left;overflow:hidden}.source-context:disabled{opacity:1;cursor:default}.source-context:hover:not(:disabled),.sample:hover{background:var(--hover)}.expand{font-size:12px;color:var(--muted);font-weight:400} .sample{display:grid;grid-template-rows:17px repeat(3,21px);min-width:0;text-align:left;border:0;border-left:1px solid var(--line);border-radius:0;padding:0 0 0 12px;overflow:hidden}.sample-title{display:flex;align-items:center;justify-content:space-between;color:var(--muted);font-size:11px}.sample-row{display:grid;grid-template-columns:42px minmax(0,1fr);gap:6px;align-items:center;min-width:0;min-height:0;height:21px;overflow:hidden}.sample-row code{display:block;min-width:0;max-width:100%;height:21px;overflow:hidden;text-overflow:ellipsis;white-space:pre;line-height:21px}.keyword{color:var(--accent);font-weight:600}.comment{color:var(--muted)}.literal{color:var(--muted)}
   .context-head{display:flex;align-items:center;color:var(--muted);font-size:11px;gap:8px;margin-bottom:3px}
   .context-head>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .quiet{border:0;padding:3px 7px;font-size:12px;background:transparent}
@@ -266,9 +278,14 @@
   code{font:12px/21px var(--mono);white-space:pre;min-width:0}
   .current-line{background:var(--soft);color:var(--accent);border-radius:3px}
   main{flex:1;min-height:0;overflow:auto;padding:12px 14px 18px}
+  .data-workspace{display:flex;flex:1;min-height:0;overflow:hidden}
+  .data-main{min-width:0}
+  .detail-pane{flex:0 0 clamp(260px,36%,440px);min-width:0;overflow:auto;border-left:1px solid var(--line);padding:12px 10px;background:var(--panel)}
+  @media(max-width:620px){.detail-pane{flex-basis:44%;min-width:180px;padding:8px}}
   .data-group{margin-bottom:13px}h2{font-size:12px;margin:0 0 6px;color:var(--muted);font-weight:500}
   .scalars,.compounds{display:flex;flex-wrap:wrap;align-items:flex-start;gap:6px}
   .module-slot{width:min(100%,var(--ideal));max-width:100%;min-width:0}
+  .scalars .module-slot{width:fit-content;max-width:min(100%,var(--ideal))}
   .compounds{gap:8px;margin-top:8px}.compounds .module-slot{flex:0 1 var(--ideal)}
   .capture-note{color:var(--muted);font-size:11px;margin-bottom:6px}
   .scalars:empty,.compounds:empty{display:none}

@@ -471,3 +471,27 @@ func TestWindowsGDBUnrepresentablePath(t *testing.T) {
 		t.Fatalf("unrepresentable path did not produce actionable configuration error: %+v", result)
 	}
 }
+
+
+// Opt-in on both native backends; checks actual typed callback arguments,
+// not a synthetic record or a frontend reconstruction.
+func TestRealPointerAndString(t *testing.T) {
+	cfg:=realConfig(t)
+	cfg.KeepLocations,cfg.ArrayRanges=nil,nil
+	src:="#include <stdlib.h>\n#include <stdio.h>\ntypedef struct { char name[8]; int score; } Team;\nTeam teams[2]={{\"CE\",2},{\"AC\",1}};\nint compare(const void *a,const void *b){\n const Team *x=a,*y=b;\n int diff=x->score-y->score;\n return diff;\n}\nint main(void){\n char v[10]=\"CE\";\n qsort(teams,2,sizeof(Team),compare);\n puts(v);\n return 0;\n}\n"
+	if err:=os.WriteFile(cfg.SourcePath,[]byte(src),0600);err!=nil{t.Fatal(err)}
+	r:=realEngine().Run(context.Background(),cfg)
+	if r.Reason!=observer.Exited{t.Fatalf("run: %s %s",r.Reason,r.Message)}
+	pointer,global,stringValue:=false,false,false
+	for _,s:=range r.Snapshots{
+		for _,v:=range s.Globals{if v.Name=="teams"&&len(v.Children)>0{global=true}}
+		if len(s.Frames)==0{continue}
+		for _,v:=range s.Frames[0].Variables{
+			if v.Name=="v"&&v.Kind==observer.String&&len(v.Children)>=3{stringValue=true}
+			if s.Location.Function=="compare"&&v.Name=="x"&&v.Kind==observer.Pointer{
+				for _,ch:=range v.Children{if ch.Name=="score"&&ch.Status==observer.Observed&&(ch.Value=="1"||ch.Value=="2"){pointer=true}}
+			}
+		}
+	}
+	if !pointer||!global||!stringValue{t.Fatalf("capture pointer=%v global=%v string=%v",pointer,global,stringValue)}
+}
