@@ -11,7 +11,7 @@
   let detail = $state<number|null>(null);
   let grouped = $state(true);
   let error = $state("");
-  let selectedPath = $state(doc.run.session.sources[0]?.path ?? "");
+  let selectedPath = $state(example.run.session.sources[0]?.path ?? "");
   let lines = $derived(tokenize(doc.run.session.sources.find(s=>s.path===selectedPath)?.text??""));
   let sourceTokens = $derived(new Map(doc.run.session.sources.map(s=>[s.path,tokenize(s.text)])));
   let tree = $derived(groupTrace(doc.run));
@@ -54,7 +54,7 @@
   function tokensAt(s: Snapshot) { return sourceTokens.get(s.location.file)?.[s.location.line-1]??[]; }
 </script>
 
-{#snippet code(tokens: Token[], fn?:string)}
+{#snippet code(tokens: Token[], fn: string | undefined)}
   <span class="code">{#each tokens as token}{#if token.kind==="identifier"&&selectable(token.text)}
     <button class="token" class:selected={columns.some(c=>c.name===token.text&&(!c.fn||c.fn===fn))} onclick={()=>choose(token.text,fn)} title="添加或移除观察列">{token.text}</button>
   {:else}<span class={token.kind}>{token.text}</span>{/if}{/each}</span>
