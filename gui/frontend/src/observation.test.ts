@@ -97,7 +97,7 @@ test("stable array compression retains all real indices, protects changed elemen
 });
 test("dense marker path bounded, exact navigation preserved",()=>{
   const ids=Array.from({length:10000},(_,i)=>i);
-  assert.ok(markerPath(ids,10000).split(" ").length<=1001);
+  assert.equal((markerPath(ids,10000).match(/M/g)??[]).length,1001);
   assert.equal(nextEvent(ids,8999,1),9000);assert.equal(nextEvent(ids,8999,-1),8998);
 });
 test("sample rules and raw output differences; no success on abnormal run",()=>{
@@ -111,4 +111,9 @@ test("source highlighting preserves text and ignores keywords in identifiers/com
   const t=sourceTokens("int iffy; /* for\nwhile */\nreturn 1;");
   assert.deepEqual(t.map(l=>l.map(x=>x.text).join("")),["int iffy; /* for","while */","return 1;"]);
   assert.deepEqual(t.flat().filter(x=>x.kind==="keyword").map(x=>x.text),["int","return"]);
+});
+
+test("shared matrix column widths include later rows",()=>{
+  const rows={name:"a",kind:"array",type:"int[][]",children:[{name:"[0]",index:0,kind:"array",type:"int[]",children:[{name:"[0]",index:0,kind:"scalar",type:"int",width:1,children:[]}]},{name:"[1]",index:1,kind:"array",type:"int[]",children:[{name:"[0]",index:0,kind:"scalar",type:"int",width:18,children:[]}]}]};
+  assert.equal(sharedFields(rows)[0].width,18);assert.equal(rows.children[0].children[0].width,1);
 });

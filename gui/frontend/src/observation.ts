@@ -193,7 +193,7 @@ export function sharedFields(shape:Shape):Shape[]{
   // Stable table columns for a matrix or array of structs; never invent values.
   const byKey=new Map<string,Shape>();
   for(const row of shape.children)for(const ch of row.children){
-    const key=identity(ch);if(!byKey.has(key))byKey.set(key,ch);
+    const key=identity(ch),prior=byKey.get(key);if(!prior)byKey.set(key,{...ch});else prior.width=Math.max(prior.width??1,ch.width??1);
   }
   const fields=[...byKey.values()];
   if(fields.every(f=>f.index!==undefined))fields.sort((a,b)=>a.index!-b.index!);
