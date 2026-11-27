@@ -19,3 +19,5 @@ Prioritize typical student programs. Use simple name matching and real snapshots
 Run gofmt, go test ./..., go vet ./... when Go code is changed; run frontend checks and target builds when frontend changes. Report actual test environment, CI versus native visual acceptance and any unverified work. Synthetic fixtures must be clearly labeled. Do not represent prior experiment as business GUI validation. No release without approval.
 
 GUI 主体已获维护者认可，优先交付 0.2.0-beta.1；PREVIEW_VERSION 管理 beta，VERSION 与 latest 保持 0.1.2。双平台真实测试、固定锁文件、原生安装检查仍为自动发行门槛。维护者明确授权 beta 先公开、人工业务验收后置；main 的 PREVIEW_VERSION 变更只触发 next。引擎精简和旧 TUI 删除后置。不得改 Companion 或直接推动 stable。
+
+维护者已批准 Observer 0.2.0 正式发行（只改本仓库）；稳定 VERSION 变更触发 latest，自动测试仍为门槛。Companion 兼容更新另行安排，不擅自改其他仓库。npm 和 GitHub Release 分离，遇权限拒绝保留构建产物，不扩大令牌权限。

@@ -1,10 +1,9 @@
 # GUI 分发与发行
 
-目标 0.2.0-beta.1；PREVIEW_VERSION 声明预发行，VERSION 保持已发行的 0.1.2。仅 Windows 11 x64 与 Apple Silicon macOS；独立 ZIP 和 npm 包来自同一原生构建。Mac APP ad-hoc 签名（非公证），Windows GUI EXE；使用已有工具链及系统 WebView。不提供其他平台、额外安装器、运行时自动安装。
+正式版本由 VERSION 声明，预发行由 PREVIEW_VERSION 声明。维护者已批准 0.2.0 正式发行；只发布 Observer，不变更 Companion、Launcher 或 C Exam Kit。支持 Windows 11 x64 和 Apple Silicon macOS；原生 ZIP 与 npm 包使用同一批构建产物，Mac ad-hoc 签名，Windows GUI EXE。旧 TUI 不再发行，0.1.x 历史版本继续可安装。
 
-publish-npm.yml 支持手动 DRY_RUN（私有 tarball）；main 上 PREVIEW_VERSION 变更显式触发 PUBLISH_NEXT。统一准备前端与 Go 依赖，原生 runner 执行真实引擎测试并构建，收集实际 Go/前端依赖许可，组合 npm manifest 和 ZIP，双平台从准确 tarball 安装并执行 --version/--capabilities，校验 SHA256 和 Mac 签名。Go 和前端完整锁文件已经从首次预检提交，所有模式均要求锁文件不变。Mac 大数组真实测试仅在唯一失败为 variables 请求超时时重试一次；其他失败或重试失败阻止发行。beta 人工真机验收由维护者授权后置，CI 不代替真机验收。
+main 的 VERSION 变更触发 PUBLISH_LATEST，PREVIEW_VERSION 变更触发 PUBLISH_NEXT；两者同时改动时正式版优先。手动 DRY_RUN 只构建，手动 PUBLISH_LATEST 可重试 VERSION，PUBLISH_NEXT 需显式输入 PREVIEW_VERSION。已发行版本跳过，查询失败停止，不覆盖或降级。全部模式固定依赖锁文件，统一前端构建，双平台真实引擎测试、原生安装、CLI 能力、SHA256 与签名校验。Mac 大数组用例仅在唯一失败为 variables 请求超时时重试一次；其他失败阻止发行。
 
-预发行通过 main 的 PREVIEW_VERSION 变更触发，或手动选择 PUBLISH_NEXT 并明确输入 PREVIEW_VERSION；不自动改 latest，禁止覆盖已发布版本。发布 job 在全部测试成功后通过现有 npm Trusted Publishing（workflow publish-npm.yml）发布 next，并从同一产物创建 GitHub prerelease。若 npm 成功但 GitHub Release 失败，人工从该次已验证 artifact 恢复 Release，不重复 npm publish。正式 stable 需另行批准、更新 VERSION 与发行说明，再 PUBLISH_LATEST。
+npm 发布沿用 Trusted Publishing，独立 github-release 任务尝试在本次验证源码上建标签并创建 Release，不需要额外长期令牌。若标签或 Release 权限拒绝，npm 成功不受影响；从本次 observer-release-VERSION artifact 下载 ZIP、tarball 与 SHA256SUMS，维护者可手工创建对应标签和 Release。不要重复发布 npm。beta.1 的旧一次性 artifact 恢复分支已删除。
 
-旧 TUI 分发、四平台历史支持见 Git 历史；不回退旧用户的已发行版本。Companion GUI 完整联调留待稳定版。引擎精简、采集预算优化留待 beta 之后。
-main 上修改发行工作流也触发已声明 beta 的幂等 next 检查，已发布版本不会覆盖；不触发 stable。
+Companion 0.2.8 声明 ^0.1.0，仍使用旧 Observer；新版 Companion 需修改兼容范围并验证 GUI 调用、真实装配、安装与返回工作流。Launcher 0.3.0 通过安装信息协议发现组件，不需要为此重新发行；C Exam Kit 不变。正式版不表示 Windows 完整 GUI 或 Companion 联调已经通过；采集性能与工程精简留待后续。

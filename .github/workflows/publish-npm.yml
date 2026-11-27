@@ -2,7 +2,7 @@ name: Build and publish Observer GUI
 on:
   push:
     branches: [main]
-    paths: ['PREVIEW_VERSION', '.github/workflows/publish-npm.yml']
+    paths: ['VERSION', 'PREVIEW_VERSION']
   workflow_dispatch:
     inputs:
       mode:
@@ -27,12 +27,11 @@ jobs:
       mode: ${{ steps.select.outputs.mode }}
       version: ${{ steps.select.outputs.version }}
       publish: ${{ steps.registry.outputs.publish }}
-      recovery_run: ${{ steps.recovery.outputs.run }}
-      recovery_sha: ${{ steps.recovery.outputs.sha }}
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
@@ -42,16 +41,25 @@ jobs:
         env:
           REQUESTED_MODE: ${{ inputs.mode }}
           REQUESTED_VERSION: ${{ inputs.version }}
+          BEFORE: ${{ github.event.before }}
         run: |
           set -euo pipefail
           mode=DRY_RUN
           if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then mode="${REQUESTED_MODE:-DRY_RUN}"; fi
           if [[ "$GITHUB_EVENT_NAME" == push ]]; then
             test "$GITHUB_REF" = refs/heads/main
-            mode=PUBLISH_NEXT
-            REQUESTED_VERSION="$(cat PREVIEW_VERSION)"
+            git cat-file -e "$BEFORE^{commit}"
+            if ! git diff --quiet "$BEFORE" "$GITHUB_SHA" -- VERSION; then
+              mode=PUBLISH_LATEST
+              REQUESTED_VERSION="$(cat VERSION)"
+            elif ! git diff --quiet "$BEFORE" "$GITHUB_SHA" -- PREVIEW_VERSION; then
+              mode=PUBLISH_NEXT
+              REQUESTED_VERSION="$(cat PREVIEW_VERSION)"
+            else
+              exit 1
+            fi
           fi
-          version="${REQUESTED_VERSION:-$(cat PREVIEW_VERSION)}"
+          if [[ "$mode" == PUBLISH_LATEST ]]; then version="${REQUESTED_VERSION:-$(cat VERSION)}"; else version="${REQUESTED_VERSION:-$(cat PREVIEW_VERSION)}"; fi
           stable='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
           preview='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-(alpha|beta|rc|dev)\.(0|[1-9][0-9]*)$'
           case "$mode" in
@@ -73,23 +81,9 @@ jobs:
             PUBLISH_NEXT) node .github/scripts/npm-release-state.mjs @routilet/c-observer "$VERSION" next ;;
             PUBLISH_LATEST) node .github/scripts/npm-release-state.mjs @routilet/c-observer "$VERSION" latest ;;
           esac
-      # One-time recovery of the exact already-verified beta artifacts.
-      # Only the push immediately following the failed release can use this path.
-      - name: Verify previous release artifacts for publish-only recovery
-        id: recovery
-        if: steps.registry.outputs.publish == 'true' && steps.select.outputs.mode == 'PUBLISH_NEXT' && steps.select.outputs.version == '0.2.0-beta.1' && github.event_name == 'push' && github.event.before == '5eec9bdc218957e78717ea15a5e57d3135d7a68a'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          run=45945293507
-          sha=5eec9bdc218957e78717ea15a5e57d3135d7a68a
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" | jq -e --arg sha "$sha" '.head_sha == $sha and .head_branch == "main" and .event == "push" and .status == "completed" and .conclusion == "failure"' >/dev/null
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/jobs" | jq -e '(.jobs | length) == 8 and ([.jobs[] | select(.name != "publish" and .conclusion != "success")] | length) == 0 and ([.jobs[] | select(.name == "publish" and .conclusion == "failure")] | length) == 1' >/dev/null
-          printf 'run=%s\nsha=%s\n' "$run" "$sha" >> "$GITHUB_OUTPUT"
   prepare:
     needs: plan
-    if: needs.plan.outputs.recovery_run == '' && (needs.plan.outputs.mode == 'DRY_RUN' || needs.plan.outputs.publish == 'true')
+    if: needs.plan.outputs.mode == 'DRY_RUN' || needs.plan.outputs.publish == 'true'
     runs-on: ubuntu-latest
     env:
       MODE: ${{ needs.plan.outputs.mode }}
@@ -332,17 +326,14 @@ jobs:
           node scripts/check-installed-gui.mjs "$RUNNER_TEMP/native-install/node_modules/@routilet/c-observer" "$VERSION" "$MODE"
   publish:
     needs: [plan, pack, native-install]
-    if: always() && github.ref == 'refs/heads/main' && needs.plan.result == 'success' && needs.plan.outputs.publish == 'true' && (needs.plan.outputs.recovery_run != '' || (needs.pack.result == 'success' && needs.native-install.result == 'success'))
+    if: github.ref == 'refs/heads/main' && needs.plan.outputs.publish == 'true'
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       id-token: write
-      actions: read
     env:
       MODE: ${{ needs.plan.outputs.mode }}
       VERSION: ${{ needs.plan.outputs.version }}
-      GH_TOKEN: ${{ github.token }}
-      SOURCE_SHA: ${{ needs.plan.outputs.recovery_sha || github.sha }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -354,32 +345,69 @@ jobs:
           package-manager-cache: false
       - run: npm install --global 'npm@^11.21.0'
       - uses: actions/download-artifact@v4
-        if: needs.plan.outputs.recovery_run == ''
         with:
           name: observer-release-${{ env.VERSION }}
           path: release
-      - uses: actions/download-artifact@v4
-        if: needs.plan.outputs.recovery_run != ''
-        with:
-          name: observer-release-${{ env.VERSION }}
-          path: release
-          github-token: ${{ github.token }}
-          run-id: ${{ needs.plan.outputs.recovery_run }}
       - id: registry
         run: |
           set -euo pipefail
           tag=latest; if [[ "$MODE" == PUBLISH_NEXT ]]; then tag=next; fi
           node .github/scripts/npm-release-state.mjs @routilet/c-observer "$VERSION" "$tag"
-      - name: Publish npm and GitHub Release
+      - name: Publish verified local npm tarball
         if: steps.registry.outputs.publish == 'true'
         run: |
           set -euo pipefail
           (cd release; sha256sum -c SHA256SUMS)
-          if gh release view "v$VERSION" >/dev/null 2>&1; then echo "Release already exists; refusing overwrite"; exit 1; fi
-          tag=latest; args=()
-          if [[ "$MODE" == PUBLISH_NEXT ]]; then tag=next; args+=(--prerelease --latest=false); fi
+          tag=latest; if [[ "$MODE" == PUBLISH_NEXT ]]; then tag=next; fi
           shopt -s nullglob
           packages=(./release/*.tgz)
           test "${#packages[@]}" = 1
           npm publish "${packages[0]}" --access public --tag "$tag"
-          gh release create "v$VERSION" release/*.zip release/*.tgz release/SHA256SUMS --target "$SOURCE_SHA" --title "C Observer $VERSION" --notes-file docs/release-notes-beta.md "${args[@]}"
+          echo "Published @routilet/c-observer@$VERSION to $tag" >> "$GITHUB_STEP_SUMMARY"
+  github-release:
+    # Separate optional channel: a GitHub permission error must not undo or
+    # obscure a successful npm publication. Do not grant a PAT to this job.
+    needs: [plan, pack, native-install, publish]
+    if: github.ref == 'refs/heads/main' && needs.plan.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: write
+    env:
+      MODE: ${{ needs.plan.outputs.mode }}
+      VERSION: ${{ needs.plan.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: observer-release-${{ env.VERSION }}
+          path: release
+      - name: Create release from the current verified source
+        run: |
+          set -euo pipefail
+          (cd release; sha256sum -c SHA256SUMS)
+          tag="v$VERSION"
+          if gh release view "$tag" >/dev/null 2>&1; then echo "Release exists; no overwrite"; exit 0; fi
+          # Tag the exact source commit, not a branch tip that may have moved.
+          # If GitHub refuses tag or Release creation, the verified artifact
+          # remains available for the maintainer to create a Release manually.
+          if ! gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
+            if ! gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$GITHUB_SHA"; then
+              echo "::warning::GitHub refused tag creation; npm already published. Create the version tag and Release manually from the verified artifact."
+              echo "GitHub tag creation failed. Use artifact observer-release-$VERSION from this run." >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+          fi
+          actual="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.sha)"
+          test "$actual" = "$GITHUB_SHA"
+          args=()
+          notes=docs/release-notes.md
+          if [[ "$MODE" == PUBLISH_NEXT ]]; then args+=(--prerelease --latest=false); notes=docs/release-notes-beta.md; fi
+          if ! gh release create "$tag" release/*.zip release/*.tgz release/SHA256SUMS --verify-tag --title "C Observer $VERSION" --notes-file "$notes" "${args[@]}"; then
+            echo "::warning::GitHub Release creation failed; npm publication is independent. Use the verified release artifact."
+            echo "GitHub Release creation failed; create it manually using observer-release-$VERSION from this run." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
