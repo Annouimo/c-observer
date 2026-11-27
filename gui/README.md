@@ -7,4 +7,4 @@
 - 尚未接入引擎或 Companion，不运行记录中的程序；不是最终设计。分组仅为观察片段，不等于精确循环迭代。
 - 目前输入输出仅显示解码文本一致性，不实现正式样例规则或逐字节差异。复杂数组展示、嵌套循环和原生窗口体验须继续验收。
 
-开发：在 frontend 中运行 npm install、npm test、npm run build；随后在 gui 中 go mod tidy、go build -tags production。开发浏览器可用 npx vite。CI 提供两目标平台预览归档及构建生成的锁文件；正式发行前提交锁文件。不要运行 npm 发布。
+开发：在 frontend 中运行 npm install、npm test、npm run build；随后在 gui 中 go mod tidy、go build -tags production。开发浏览器可用 npx vite。CI 在 Ubuntu 上只执行一次前端安装、测试、构建和 Go 依赖解析，再将共享 dist、go.mod、go.sum、package-lock.json 交给 Windows/macOS 原生打包；前置失败时不启动原生矩阵，新提交取消过时预览构建。预览归档和共享构建输入保留 7 天；正式发行前提交锁文件。不要运行 npm 发布。

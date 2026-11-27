@@ -9,8 +9,50 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: gui-preview-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
+  prepare:
+    name: Test and prepare shared inputs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache: false
+      - name: Install, test and build frontend once
+        working-directory: gui/frontend
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci --no-audit --no-fund
+          else
+            npm install --no-audit --no-fund
+          fi
+          npm test
+          npm run build
+      - name: Resolve Go dependencies once
+        working-directory: gui
+        run: go mod tidy
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gui-build-inputs
+          path: |
+            gui/frontend/dist
+            gui/frontend/package-lock.json
+            gui/go.mod
+            gui/go.sum
+          if-no-files-found: error
+          retention-days: 7
   build:
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -22,7 +64,7 @@ jobs:
             goos: darwin
             arch: arm64
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 25
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: gui
@@ -33,21 +75,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: gui-build-inputs
+          path: gui
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.x'
-          cache: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Build frontend
-        working-directory: gui/frontend
-        run: |
-          npm install --no-audit --no-fund
-          npm test
-          npm run build
-      - name: Resolve Go dependencies
-        run: go mod tidy
+          cache-dependency-path: gui/go.sum
       - name: Build Windows GUI
         if: runner.os == 'Windows'
         shell: pwsh
@@ -55,7 +90,7 @@ jobs:
           CGO_ENABLED: '0'
         run: |
           New-Item -ItemType Directory -Force out | Out-Null
-          go build -tags production -trimpath -ldflags "-s -w -H windowsgui" -o out/c-observer-preview.exe .
+          go build -mod=readonly -tags production -trimpath -ldflags "-s -w -H windowsgui" -o out/c-observer-preview.exe .
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Get-Item out/c-observer-preview.exe | Select-Object Name,Length
           Compress-Archive -Path out/c-observer-preview.exe -DestinationPath out/gui-windows-amd64.zip
@@ -71,7 +106,7 @@ jobs:
           test "$(uname -m)" = arm64
           app="out/C Observer Preview.app"
           mkdir -p "$app/Contents/MacOS"
-          go build -tags production -trimpath -ldflags "-s -w" -o "$app/Contents/MacOS/c-observer-preview" .
+          go build -mod=readonly -tags production -trimpath -ldflags "-s -w" -o "$app/Contents/MacOS/c-observer-preview" .
           cp Info.plist "$app/Contents/Info.plist"
           codesign --force --sign - "$app"
           codesign --verify --strict "$app"
@@ -84,11 +119,4 @@ jobs:
           name: gui-${{ matrix.goos }}-${{ matrix.arch }}
           path: gui/out/*.zip
           if-no-files-found: error
-      - uses: actions/upload-artifact@v4
-        with:
-          name: dependency-locks-${{ matrix.goos }}-${{ matrix.arch }}
-          path: |
-            gui/go.mod
-            gui/go.sum
-            gui/frontend/package-lock.json
-          if-no-files-found: error
+          retention-days: 7
