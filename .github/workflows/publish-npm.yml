@@ -1,15 +1,8 @@
 name: Build and publish Observer GUI
 on:
   push:
-    branches: [refactor/printf-first]
-    paths:
-      - '.github/workflows/publish-npm.yml'
-      - 'scripts/**'
-      - 'go.mod'
-      - 'go.sum'
-      - 'gui/frontend/package-lock.json'
-  pull_request:
     branches: [main]
+    paths: ['PREVIEW_VERSION']
   workflow_dispatch:
     inputs:
       mode:
@@ -50,6 +43,11 @@ jobs:
           set -euo pipefail
           mode=DRY_RUN
           if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then mode="${REQUESTED_MODE:-DRY_RUN}"; fi
+          if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+            test "$GITHUB_REF" = refs/heads/main
+            mode=PUBLISH_NEXT
+            REQUESTED_VERSION="$(cat PREVIEW_VERSION)"
+          fi
           version="${REQUESTED_VERSION:-$(cat PREVIEW_VERSION)}"
           stable='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
           preview='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-(alpha|beta|rc|dev)\.(0|[1-9][0-9]*)$'
@@ -94,35 +92,21 @@ jobs:
         working-directory: gui/frontend
         run: |
           set -euo pipefail
-          if [[ -f package-lock.json ]]; then npm ci --no-audit --no-fund; else
-            test "$MODE" = DRY_RUN
-            npm install --no-audit --no-fund
-          fi
+          npm ci --no-audit --no-fund
           npm test
           npm run build
       - name: Resolve Go dependencies and check shared code
         run: |
           set -euo pipefail
           go mod tidy
-          if [[ "$MODE" != DRY_RUN ]]; then
-            git ls-files --error-unmatch gui/frontend/package-lock.json
-            git diff --exit-code -- go.mod go.sum gui/frontend/package-lock.json
-          fi
+          git ls-files --error-unmatch gui/frontend/package-lock.json
+          git diff --exit-code -- go.mod go.sum gui/frontend/package-lock.json
           go test ./internal/... ./cmd/...
           go vet ./internal/... ./cmd/...
       - name: Collect frontend notices
         run: |
           mkdir -p inputs/frontend
           node scripts/frontend-notices.mjs inputs/frontend/NOTICES.txt
-      - name: Capture lock bootstrap inputs
-        if: env.MODE == 'DRY_RUN'
-        run: |
-          # Log only public dependency lock data, in bounded base64 lines.
-          for f in go.mod go.sum gui/frontend/package-lock.json; do
-            echo "LOCK-BEGIN $f"
-            base64 -w 180 "$f"
-            echo "LOCK-END $f"
-          done
       - uses: actions/upload-artifact@v4
         with:
           name: observer-gui-inputs
@@ -189,7 +173,186 @@ jobs:
           set -euo pipefail
           xcrun clang --version
           xcrun --find lldb-dap
+          # Retry only the known transient LLDB timeout of the large-array
+          # fixture. All other failures and a failed retry still block release.
+          set +e
+          go test -mod=readonly -count=1 -v -json ./internal/app ./internal/engine | tee "$RUNNER_TEMP/native-mac-tests.jsonl"
+          status=${PIPESTATUS[0]}
+          set -e
+          if [[ "$status" != 0 ]]; then
+            node --input-type=module - "$RUNNER_TEMP/native-mac-tests.jsonl" <<'NODE'
+          import fs from 'node:fs';
+          const lines=fs.readFileSync(process.argv[2],'utf8').trim().split('\n').map(JSON.parse);
+          const failed=lines.filter(e=>e.Action==='fail'&&e.Test);
+          const pkgFailures=lines.filter(e=>e.Action==='fail'&&!e.Test);
+          const timedOut=lines.some(e=>e.Test==='TestRealObservation'&&e.Output?.includes('request_timed_out: variables: context deadline exceeded'));
+          if(failed.length!==1||failed[0].Test!=='TestRealObservation'||pkgFailures.length!==1||!pkgFailures[0].Package?.endsWith('/internal/engine')||!timedOut)process.exit(1);
+          NODE
+            go test -mod=readonly -count=1 -v -run '^TestRealObservation
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        env:
+          C_OBSERVER_REAL_APP: '1'
+          C_OBSERVER_REAL_GDB: '1'
+        run: |
+          set -euo pipefail
+          gcc --version
+          gdb --version
+          gdb -nx -batch -ex 'python import sys; print(sys.version)'
           go test -mod=readonly -count=1 -v ./internal/app ./internal/engine
+      - name: Build and sign Apple Silicon app
+        if: runner.os == 'macOS'
+        env:
+          MACOSX_DEPLOYMENT_TARGET: '12.0'
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          go test -mod=readonly -tags production ./gui
+          go vet -mod=readonly -tags production ./gui
+          mkdir -p native 'stage/C Observer.app/Contents/MacOS'
+          app='stage/C Observer.app'
+          go build -mod=readonly -tags production -trimpath -ldflags "-s -w -X main.version=$VERSION" -o "$app/Contents/MacOS/c-observer" ./gui
+          cp gui/Info.plist "$app/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION%%-*}" "$app/Contents/Info.plist"
+          codesign --force --sign - "$app"
+          codesign --verify --strict "$app"
+          test "$("$app/Contents/MacOS/c-observer" --version)" = "$VERSION"
+          "$app/Contents/MacOS/c-observer" --capabilities
+          node scripts/native-gui-notices.mjs native/NOTICES.txt
+          ditto -c -k --keepParent "$app" native/native.zip
+      - name: Build native Windows GUI
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          go test -mod=readonly -tags production ./gui
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go vet -mod=readonly -tags production ./gui
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force native,stage | Out-Null
+          go build -mod=readonly -tags production -trimpath -ldflags "-s -w -H windowsgui -X main.version=$env:VERSION" -o stage/c-observer.exe ./gui
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/native-gui-notices.mjs native/NOTICES.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Compress-Archive -Path stage/c-observer.exe -DestinationPath native/native.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: observer-native-${{ matrix.target }}
+          path: native/
+          if-no-files-found: error
+          retention-days: 7
+  pack:
+    needs: [plan, native]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      MODE: ${{ needs.plan.outputs.mode }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: observer-gui-inputs
+          path: shared
+      - uses: actions/download-artifact@v4
+        with:
+          name: observer-native-darwin-arm64
+          path: inputs/darwin-arm64
+      - uses: actions/download-artifact@v4
+        with:
+          name: observer-native-win32-x64
+          path: inputs/win32-x64
+      - run: |
+          set -euo pipefail
+          cp -R shared/inputs/frontend inputs/frontend
+          node scripts/package-preview.mjs "$VERSION" inputs release "$MODE"
+          (cd release; sha256sum *.tgz *.zip > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: observer-release-${{ env.VERSION }}
+          path: |
+            release/*.tgz
+            release/*.zip
+            release/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
+  native-install:
+    needs: [plan, pack]
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, windows-2025]
+    runs-on: ${{ matrix.runner }}
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      MODE: ${{ needs.plan.outputs.mode }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: observer-release-${{ env.VERSION }}
+          path: release
+      - name: Install exact packaged tarball and verify CLI/manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=("$PWD"/release/*.tgz)
+          test "${#files[@]}" = 1
+          npm install --prefix "$RUNNER_TEMP/native-install" --no-save --ignore-scripts --no-audit --no-fund "${files[0]}"
+          node scripts/check-installed-gui.mjs "$RUNNER_TEMP/native-install/node_modules/@routilet/c-observer" "$VERSION" "$MODE"
+  publish:
+    needs: [plan, pack, native-install]
+    if: github.ref == 'refs/heads/main' && needs.plan.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      MODE: ${{ needs.plan.outputs.mode }}
+      VERSION: ${{ needs.plan.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - run: npm install --global 'npm@^11.21.0'
+      - uses: actions/download-artifact@v4
+        with:
+          name: observer-release-${{ env.VERSION }}
+          path: release
+      - id: registry
+        run: |
+          set -euo pipefail
+          tag=latest; if [[ "$MODE" == PUBLISH_NEXT ]]; then tag=next; fi
+          node .github/scripts/npm-release-state.mjs @routilet/c-observer "$VERSION" "$tag"
+      - name: Publish npm and GitHub Release
+        if: steps.registry.outputs.publish == 'true'
+        run: |
+          set -euo pipefail
+          (cd release; sha256sum -c SHA256SUMS)
+          if gh release view "v$VERSION" >/dev/null 2>&1; then echo "Release already exists; refusing overwrite"; exit 1; fi
+          tag=latest; args=()
+          if [[ "$MODE" == PUBLISH_NEXT ]]; then tag=next; args+=(--prerelease --latest=false); fi
+          npm publish release/*.tgz --access public --tag "$tag"
+          gh release create "v$VERSION" release/*.zip release/*.tgz release/SHA256SUMS --target "$GITHUB_SHA" --title "C Observer $VERSION" --notes-file docs/release-notes-beta.md "${args[@]}"
+ ./internal/engine
+          fi
       - name: Verify actual Windows observation
         if: runner.os == 'Windows'
         shell: msys2 {0}

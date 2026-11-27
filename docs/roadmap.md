@@ -18,3 +18,5 @@
 阶段 1–3 不因后端精简而阻塞；阶段 4 不为低频情况建设通用语义分析。阶段 5 之前不修改正式 npm 工作流或 Companion。
 
 维护者已认可主体 GUI 与真实题布局。先进行双平台 GUI 发行工程、固定依赖、真实运行和安装验收，通过后发行 beta.1（npm next + GitHub prerelease）；随后再做代表性程序基准、采集策略、引擎精简与 Companion 完整联调。稳定版另行批准。旧 TUI 暂留但不发行。
+
+维护者授权 beta 先公开，Windows 实机 GUI 验收后置；保留 CI 原生真实测试、锁文件与安装校验。PREVIEW_VERSION 变更触发 next，不变更 VERSION。
