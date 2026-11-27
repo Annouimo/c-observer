@@ -55,3 +55,60 @@ test("reject duplicate ids and accept v1 nil slices",()=>{
   const y=structuredClone(fixture);delete y.synthetic;y.format="c-observer-record";y.schema_version=1;y.run.session.backend="gdb-mi";y.stdin="";y.expected_stdout=null;y.run.snapshots=null;y.run.session.sources=null;
   assert.equal(parseDocument(y).run.snapshots.length,0);
 });
+
+
+import {visibleModules,moduleWidth,arraySegments,foldValue,replayContext,markerPath,sampleResult,outputRows,sourceTokens} from "./observation.ts";
+const loadFixture=(name:string)=>parseDocument(JSON.parse(readFileSync(new URL("../../../testdata/snapshots/"+name+".json",import.meta.url),"utf8")));
+test("replay context uses real interval, never future or inferred source",()=>{
+  const r=run();assert.equal(replayContext(r,0).before,undefined);
+  assert.equal(replayContext(r,5).origin?.line,9);assert.equal(replayContext(r,5).after?.line,7);
+});
+test("known frame, object and declaration conflicts block root/member differences",()=>{
+  const r=run(),c={name:"a",fn:"main"},m=member(member(c,{name:"[1]",index:1}),{name:"score"});
+  selectedValues(r.snapshots[5],c)[0].id="other";
+  assert.equal(matchingPrevious(r,r.snapshots[5],m),undefined);
+  const x=run();x.snapshots[5].frames[0].id="different";
+  assert.equal(matchingPrevious(x,x.snapshots[5],m),undefined);
+  const y=run();selectedValues(y.snapshots[4],c)[0].declaration={file:"main.c",line:4};selectedValues(y.snapshots[5],c)[0].declaration={file:"main.c",line:6};
+  assert.equal(matchingPrevious(y,y.snapshots[5],m),undefined);
+});
+test("stress fixture: current function roots only, stable finite layout and actual sparse indices",()=>{
+  const r=loadFixture("data-first-stress").run,l=modules(r);
+  for(const s of r.snapshots){
+    const v=visibleModules(l,s);
+    assert.ok((s.frames[0]?.variables??[]).every(x=>v.some(m=>m.column.name===x.name)));
+    assert.ok(v.every(m=>m.column.global||m.column.fn===s.location.function));
+    assert.ok(v.every(m=>Number.isFinite(moduleWidth(m.shape))&&moduleWidth(m.shape)>0));
+  }
+  const sparse=l.find(m=>m.column.name==="sparse")!;
+  assert.equal(sparse.shape.children.length,4);assert.ok(sparse.shape.children.some(c=>c.index!>100));
+  assert.equal(visibleModules(l,r.snapshots[0]).filter(m=>!m.column.global).length,5);
+});
+test("stable array compression retains all real indices, protects changed elements, refuses missing values",()=>{
+  const r=loadFixture("adaptive-array").run,a=modules(r).find(m=>m.column.name==="a")!;
+  const groups=arraySegments(a.shape);
+  assert.deepEqual(groups.flat().map(c=>c.index),a.shape.children.map(c=>c.index));
+  assert.ok(groups.every(g=>g.length===1||g.every(c=>!c.important)));
+  const sample=selectedValues(r.snapshots[0],a.column)[0];
+  for(const g of groups.filter(g=>g.length>1)){
+    assert.notEqual(foldValue(g,sample,undefined),undefined);
+    assert.equal(foldValue(g,{...sample,children:[]},undefined),undefined);
+  }
+});
+test("dense marker path bounded, exact navigation preserved",()=>{
+  const ids=Array.from({length:10000},(_,i)=>i);
+  assert.ok(markerPath(ids,10000).split(" ").length<=1001);
+  assert.equal(nextEvent(ids,8999,1),9000);assert.equal(nextEvent(ids,8999,-1),8998);
+});
+test("sample rules and raw output differences; no success on abnormal run",()=>{
+  const d=parseDocument(structuredClone(fixture));d.expectedBytes=new TextEncoder().encode("17 25 30 40\r\n");
+  assert.equal(sampleResult(d),"输出一致");assert.equal(outputRows(d)[0].equal,false);
+  d.comparison="";assert.equal(sampleResult(d),"输出不一致");
+  d.run.reason="cancelled";assert.equal(sampleResult(d),"运行未正常结束");
+  d.run.reason="exited";d.run.output.stdout_truncated=true;assert.equal(sampleResult(d),"输出不完整");
+});
+test("source highlighting preserves text and ignores keywords in identifiers/comments",()=>{
+  const t=sourceTokens("int iffy; /* for\nwhile */\nreturn 1;");
+  assert.deepEqual(t.map(l=>l.map(x=>x.text).join("")),["int iffy; /* for","while */","return 1;"]);
+  assert.deepEqual(t.flat().filter(x=>x.kind==="keyword").map(x=>x.text),["int","return"]);
+});
