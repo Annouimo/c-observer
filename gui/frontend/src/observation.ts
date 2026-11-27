@@ -338,3 +338,54 @@ export function sourceMotion(run:Run,from:number,to:number):number{
   if(!a||!b||!a.file||a.file!==b.file||a.line<=0||b.line<=0||!run.session.sources.some(s=>s.path===a.file))return 0;
   return Math.max(-2,Math.min(2,b.line-a.line))*21;
 }
+
+
+// Shared coordinates for track, thumb and marker hit testing. A click in
+// the marker band can snap to a real event; dragging never snaps.
+export function trackPosition(x:number,width:number,total:number):number{
+  return total<2||width<=0?0:Math.max(0,Math.min(total-1,x/width*(total-1)));
+}
+export function markerHit(events:number[],position:number,total:number,width:number,radius=7):number|undefined{
+  if(!events.length||total<2||width<=0)return undefined;
+  const candidates=[nextEvent(events,Math.floor(position)+1,-1),nextEvent(events,Math.floor(position),1)].filter((v):v is number=>v!==undefined);
+  const nearest=candidates.sort((a,b)=>Math.abs(a-position)-Math.abs(b-position)||a-b)[0];
+  return nearest!==undefined&&Math.abs(nearest-position)*width/(total-1)<=radius?nearest:undefined;
+}
+export function navigationTarget(key:string,shift:boolean,step:number,total:number,events:number[]):number|undefined{
+  if(key==="Home")return 0;
+  if(key==="End")return Math.max(0,total-1);
+  if(key!=="ArrowLeft"&&key!=="ArrowRight")return undefined;
+  const d=key==="ArrowLeft"?-1:1;
+  return shift?(nextEvent(events,step,d)??step):Math.max(0,Math.min(total-1,step+d));
+}
+export function statusHint(v:Variable|undefined,root=false):string{
+  return !v?(root?"当前观察无对应对象":"当前观察未记录该成员"):v.status==="not_captured"?"未采集":v.status==="unavailable"?"无法读取":label(v);
+}
+// An optional flash identifies a real adjacent observed value difference,
+// regardless of replay direction. Avoid large flashes and never animate
+// appearance/disappearance or an inferred numeric transition.
+export function pulseTargets(run:Run,from:number,to:number,limit=12):Set<string>{
+  const out=new Set<string>();
+  if(Math.abs(from-to)!==1)return out;
+  const later=run.snapshots[Math.max(from,to)];
+  if(!later)return out;
+  const fn=later.frames[0]?.location.function??later.location.function;
+  const roots:Column[]=[...(later.frames[0]?.variables??[]).map(v=>({name:v.name,fn})),...(later.globals??[]).map(v=>({name:v.name,global:true}))];
+  function visit(c:Column,a:Variable|undefined,b:Variable|undefined){
+    if(out.size>limit||!a||!b||!corresponding(a,b)||a.status!=="observed"||b.status!=="observed")return;
+    if(b.children?.length){
+      const seen=new Set<string>();
+      for(const ch of b.children){
+        const k=identity(ch);if(seen.has(k))continue;seen.add(k);
+        visit(member(c,ch),childValue(a,ch),childValue(b,ch));
+        if(out.size>limit)return;
+      }
+    }else if(observedChange(a,b))out.add(columnKey(c));
+  }
+  for(const c of roots){
+    const v=selectedValues(later,c);
+    if(v.length===1)visit(c,matchingPrevious(run,later,c),v[0]);
+    if(out.size>limit)return new Set();
+  }
+  return out;
+}

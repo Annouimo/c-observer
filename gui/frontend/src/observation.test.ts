@@ -143,3 +143,35 @@ test("source motion follows actual origin line direction, never distant seek or 
   r.snapshots[2].location.file="other.c";
   assert.equal(sourceMotion(r,2,3),0);
 });
+
+
+import {trackPosition,markerHit,navigationTarget,pulseTargets,statusHint} from "./observation.ts";
+test("timeline hit tests real events, deterministic ties, clamp and empty record",()=>{
+  assert.equal(trackPosition(50,100,101),50);
+  assert.equal(trackPosition(-20,100,101),0);
+  assert.equal(trackPosition(130,100,101),100);
+  assert.equal(trackPosition(50,100,0),0);
+  assert.equal(markerHit([10,20],15,101,100),10);
+  assert.equal(markerHit([10,20],18,101,100),20);
+  assert.equal(markerHit([10,20],50,101,100),undefined);
+  assert.equal(markerHit([],15,101,100),undefined);
+  const dense=Array.from({length:10000},(_,i)=>i);
+  assert.equal(markerHit(dense,7894.4,10000,300),7894);
+});
+test("keyboard navigation retains exact original events",()=>{
+  assert.equal(navigationTarget("ArrowLeft",true,5,10,[2,5,8]),2);
+  assert.equal(navigationTarget("ArrowRight",true,5,10,[2,5,8]),8);
+  assert.equal(navigationTarget("ArrowRight",true,8,10,[2,5,8]),8);
+  assert.equal(navigationTarget("ArrowLeft",false,0,10,[]),0);
+  assert.equal(navigationTarget("End",false,0,10,[]),9);
+});
+test("flash targets compare only adjacent actual leaf values in either direction",()=>{
+  const r=run(),c=member(member({name:"a",fn:"main"},{name:"[1]",index:1}),{name:"score"});
+  assert.deepEqual([...pulseTargets(r,4,5)],[columnKey(c)]);
+  assert.deepEqual([...pulseTargets(r,5,4)],[columnKey(c)]);
+  assert.equal(pulseTargets(r,0,1).size,0);
+  assert.equal(pulseTargets(r,0,5).size,0);
+  assert.equal(pulseTargets(r,3,4,1).size,0);
+  assert.equal(statusHint(undefined,true),"当前观察无对应对象");
+  assert.equal(statusHint(undefined,false),"当前观察未记录该成员");
+});
