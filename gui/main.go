@@ -78,23 +78,23 @@ func run() error {
  defer d.core.Close()
  if flags.NArg()>1||*sess!=""&&*replay!=""||(*sess!=""||*replay!="")&&(flags.NArg()!=0||*be!="auto"||*cc!=""||*dbg!=""){return fmt.Errorf("不兼容的启动参数")}
  if *sess!=""{
-  cfg,e:=session.Load(*sess);if e!=nil{d.initial.Error=e.Error()}else{d.sessionConfig=&cfg;d.initial.Mode="session";d.initial.Source=cfg.SourcePath}
+  cfg,e:=session.Load(*sess);if e!=nil{return e}else{d.sessionConfig=&cfg;d.initial.Mode="session";d.initial.Source=cfg.SourcePath}
  }else if *replay!=""{
-  r,e:=record.LoadRecord(*replay);if e!=nil{d.initial.Error=e.Error()}else{d.initial.Record,e=app.Encode(r);if e!=nil{return e};d.initial.Mode="replay"}
+  r,e:=record.LoadRecord(*replay);if e!=nil{return e}else{d.initial.Record,e=app.Encode(r);if e!=nil{return e};d.initial.Mode="replay"}
  }else if flags.NArg()==1{
   p,e:=filepath.Abs(flags.Arg(0));if e!=nil{return e}
   if !strings.EqualFold(filepath.Ext(p),".c"){return fmt.Errorf("仅支持 C 源文件")}
   d.initial.Source=p
  }
  native:=application.New(application.Options{
-  Name:"C Observer Preview",Description:"Offline C execution observer",
+  Name:"C Observer",Description:"Offline C execution observer",
   Services:[]application.Service{application.NewService(d)},
   Assets:application.AssetOptions{Handler:application.BundledAssetFileServer(assets)},
   Mac:application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed:true},
   OnShutdown:d.core.Close,
  })
  d.native=native
- native.Window.NewWithOptions(application.WebviewWindowOptions{Title:"C Observer Preview",Width:980,Height:720,URL:"/"})
+ native.Window.NewWithOptions(application.WebviewWindowOptions{Title:"C Observer",Width:980,Height:720,URL:"/"})
  return native.Run()
 }
 func main(){if e:=run();e!=nil{fmt.Fprintln(os.Stderr,"C Observer:",e);os.Exit(1)}}

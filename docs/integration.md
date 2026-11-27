@@ -1,6 +1,6 @@
 # Companion 调用协议 v1（开发阶段）
 
-唯一权威规范。正式入口 c-observer；无参数或单个 .c 路径进入配置，--session FILE 直接采集，--version 和 --capabilities 不启动终端 UI。能力查询返回 version、sessionSchemaVersions（整数列表）、platform（Go GOOS）、arch（GOARCH）、backends（编译进去的后端，不表示已检测到外部工具）。当前 macOS 支持 LLDB，Linux 支持 GDB/LLDB，Windows x64 支持 GDB。正常退出观察界面返回 0；命令行、协议或 TUI 启动失败非零。被观察程序失败属于界面中的 RunResult，不当作进程启动错误。
+唯一权威规范。GUI 发行入口由 manifest 指向（Mac APP 内部可执行文件，Windows EXE）；无参数或单个 .c 路径进入配置，--session FILE 直接采集，--version 和 --capabilities 不启动终端 UI。能力查询返回 version、sessionSchemaVersions（整数列表）、platform（Go GOOS）、arch（GOARCH）、backends（编译进去的后端，不表示已检测到外部工具）。GUI 发行仅 Apple Silicon Mac LLDB 与 Windows x64 GDB；旧 TUI 历史平台见 Git 历史。正常退出观察界面返回 0；命令行、协议或 GUI 启动失败非零。被观察程序失败属于界面中的 RunResult，不当作进程启动错误。
 
 JSON 对象：
 - schemaVersion: 1（必填）
@@ -26,3 +26,5 @@ Session v1 新增可选 `backend`：`auto`（或省略）、`gdb`、`lldb`。仅
 映射路径：调试器可能将相对 #line 路径报告为工作目录下绝对路径；引擎按工作目录匹配精确相对键，不按 basename 猜测。真实 LLDB 非零退出 Session 回归必须通过。
 
 `--capabilities` 新增可选 sessionFeatures 列表。支持 comparison 的版本可接收 `comparison`（exact/trim-line-end/tokens）；保留原始字节对照，另显示有效 UTF-8 的样例规则一致性；不等同于 OJ 判定。旧版本不得收到未知字段。独立观察默认逐字节比较。
+
+0.2.0 beta：manifest v1 路径不应硬编码，Mac 包含完整 APP，Windows 是 GUI EXE；通过安装后能力查询验证 CLI 管道。Companion 完整交互联调留待正式版本，beta 不改变 Companion 依赖。

@@ -1,15 +1,5 @@
 name: GUI replay preview (no publishing)
 on:
-  push:
-    branches: [refactor/printf-first]
-    paths:
-      - 'gui/**'
-      - 'go.mod'
-      - 'go.sum'
-      - 'internal/**'
-      - 'cmd/**'
-      - 'testdata/snapshots/**'
-      - '.github/workflows/gui-preview.yml'
   workflow_dispatch:
     inputs:
       windows:
@@ -95,10 +85,10 @@ jobs:
           CGO_ENABLED: '0'
         run: |
           New-Item -ItemType Directory -Force out | Out-Null
-          go build -mod=readonly -tags production -trimpath -ldflags "-s -w -H windowsgui" -o out/c-observer-preview.exe .
+          go build -mod=readonly -tags production -trimpath -ldflags "-s -w -H windowsgui" -o out/c-observer.exe .
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Get-Item out/c-observer-preview.exe | Select-Object Name,Length
-          Compress-Archive -Path out/c-observer-preview.exe -DestinationPath out/gui-windows-amd64.zip
+          Get-Item out/c-observer.exe | Select-Object Name,Length
+          Compress-Archive -Path out/c-observer.exe -DestinationPath out/gui-windows-amd64.zip
           Get-Item out/gui-windows-amd64.zip | Select-Object Name,Length
       - name: Build Apple Silicon app
         if: runner.os == 'macOS'
@@ -111,13 +101,13 @@ jobs:
           test "$(uname -m)" = arm64
           go test -mod=readonly -tags production .
           go vet -mod=readonly -tags production .
-          app="out/C Observer Preview.app"
+          app="out/C Observer.app"
           mkdir -p "$app/Contents/MacOS"
-          go build -mod=readonly -tags production -trimpath -ldflags "-s -w" -o "$app/Contents/MacOS/c-observer-preview" .
+          go build -mod=readonly -tags production -trimpath -ldflags "-s -w" -o "$app/Contents/MacOS/c-observer" .
           cp Info.plist "$app/Contents/Info.plist"
           codesign --force --sign - "$app"
           codesign --verify --strict "$app"
-          file "$app/Contents/MacOS/c-observer-preview"
+          file "$app/Contents/MacOS/c-observer"
           du -sh "$app"
           ditto -c -k --keepParent "$app" out/gui-macos-arm64.zip
           ls -lh out/gui-macos-arm64.zip
