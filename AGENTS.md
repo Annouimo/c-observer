@@ -1,13 +1,19 @@
 # Agent collaboration
 
-## Scope and ownership
-- Product owner: Annouimo. Product decisions are reviewed by the owner.
-- Codex / `feat/engine`: `internal/engine/**`, real debugger integration, toolchain discovery, capture, process lifecycle, platform tests and real C fixtures in `testdata/programs/**`.
-- ChatGPT / `feat/tui`: `internal/tui/**`, replay, visualization, navigation, fixture-driven UI tests, `testdata/snapshots/**`, UI design.
-- Shared: `internal/observer/**`, `cmd/c-observer/**`, `go.mod`, docs/interface.md, fixture schema. Changes to shared contracts require both sides to review; coordinate dependencies and entrypoint changes before merging.
-- Do not change the other side's owned files without coordination. No remote execution service or AI features. Never modify Companion as part of this repo without separate approval.
+Product owner: Annouimo. Product decisions require owner review. Read docs/product.md, docs/design.md, docs/frontend-next.md and docs/roadmap.md before changing code. Next generation: printf-first Web GUI, not a simplified professional debugger.
 
-## Current phase and workflow
-Current phase: 0.1.2 integration and product acceptance. Read [docs/engine-next.md](docs/engine-next.md) and [docs/frontend-next.md](docs/frontend-next.md). Limit work to verified improvements and release-blocking regressions; do not reopen deferred research without a concrete usage problem and owner approval. The reviewed blocking Engine.Run contract remains the baseline. Reconcile the tested local integration with remote branches before starting short-lived feature branches; preserve unmerged work. Record agreed interface changes in docs/interface.md and update models, fixtures and tests together. Use separate small PRs to main. No force-push or deletion of unrelated work.
-Before a PR: gofmt, go test ./..., go vet ./...; state what platforms were actually run, and what is only simulated or cross-built. UI fixtures are synthetic and must never be represented as real captures.
-Read docs/product.md, docs/interface.md, docs/design.md and docs/roadmap.md before implementation. Prefer simple Go interfaces, avoid speculative abstractions and unnecessary dependencies.
+## Scope
+
+- Frontend: Svelte/TypeScript, replay, source tokens, execution document, display-only grouping, fixture tests.
+- Engine: internal/engine/**; preserve existing engine until GUI acceptance, then simplify from measured needs.
+- Shared: internal/observer/**, session protocol, entrypoint, record format; coordinate contract changes. Existing docs/interface.md is the legacy/current engine contract until explicitly revised.
+- Windows course GCC 16.2.0 installer and PATH configuration are the accepted environment baseline. Do not research legacy Dev-C++ or alternative toolchains, add IDE discovery, expand target platforms or build compatibility infrastructure without a concrete baseline failure and owner approval.
+- No remote execution service, AI features, code generation or changes to Companion without separate approval.
+
+## Workflow
+
+Work on the independent refactor branch, no force-push or deletion of unrelated work. Keep main and VERSION unchanged until owner-approved release. Phase 1 consumes existing records; no engine, stable protocol or publishing changes. Prefer small, reviewable commits. Experiment results are retained; no additional framework pre-research.
+
+Prioritize typical student programs. Use simple name matching and lexical structure hints; lossless fallback to original observations. Preserve source, values, observation order, missing/truncated state; avoid claims of exact assignment/iteration when not observed.
+
+Run gofmt, go test ./..., go vet ./... when Go code is changed; run frontend checks and target builds when frontend changes. Report actual test environment, CI versus native visual acceptance and any unverified work. Synthetic fixtures must be clearly labeled. Do not represent prior experiment as business GUI validation. No release without approval.
