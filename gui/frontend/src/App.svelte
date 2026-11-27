@@ -5,7 +5,7 @@
   import example from "../../../testdata/snapshots/wrong-index.json";
   import DataModule from "./DataModule.svelte";
   import Timeline from "./Timeline.svelte";
-  import {parseDocument,modules,selectedValues,matchingPrevious,changeEvents,navigationTarget,replayFeedback,columnKey,columnLabel,outputText,MAX_BYTES,visibleModules,isCompound,moduleWidth,detailRoot,replayContext,sampleResult,outputRows,sourceTokens,samplePreview,type Column,type NavigationMode} from "./observation";
+  import {parseDocument,modules,selectedValues,matchingPrevious,changeEvents,navigationTarget,replayFeedback,columnKey,columnLabel,outputText,MAX_BYTES,visibleModules,isInline,moduleWidth,detailRoot,replayContext,sampleResult,outputRows,sourceTokens,samplePreview,type Column,type NavigationMode} from "./observation";
   let doc=$state(parseDocument(example));
   let screen=$state<"starting"|"setup"|"running"|"replay">("starting");
   let native=$state(false);
@@ -91,6 +91,8 @@
   let total=$derived(doc.run.snapshots.length);
   let active=$derived(selected?columnKey(selected):"");
   let detail=$derived(detailRoot(allModules,selected));
+  let detailKey=$derived(detail?columnKey(detail.column):"");
+  function resetDetailScroll(node:HTMLElement,initial:string){return {update(next:string){node.scrollTop=0;node.scrollLeft=0;}};}
   let detailValues=$derived(detail&&current?selectedValues(current,detail.column):[]);
   let detailPrevious=$derived(detail&&current?matchingPrevious(doc.run,current,detail.column):undefined);
   const detailMotion=()=>({x:10,duration:matchMedia("(prefers-reduced-motion: reduce)").matches?0:140,opacity:0.6});
@@ -208,13 +210,13 @@
       <section class="data-group">
         {#if groups.length>1}<h2>{group==="全局 / 静态"?group:group+" · 局部变量"}</h2>{/if}
         <div class="scalars">
-          {#each list.filter(m=>(m.column.global?"全局 / 静态":m.column.fn??"局部变量")===group&&!isCompound(m.shape)) as m (columnKey(m.column))}
+          {#each list.filter(m=>(m.column.global?"全局 / 静态":m.column.fn??"局部变量")===group&&isInline(m.shape)) as m (columnKey(m.column))}
             {@const vs=selectedValues(current,m.column)}
             <div class="module-slot" style:--ideal={moduleWidth(m.shape)+"px"}><DataModule shape={m.shape} column={m.column} value={vs.length===1?vs[0]:undefined} previous={matchingPrevious(doc.run,current,m.column)} {active} onSelect={choose} {pulses} pulseSerial={motion.serial} root ambiguous={vs}/></div>
           {/each}
         </div>
         <div class="compounds">
-          {#each list.filter(m=>(m.column.global?"全局 / 静态":m.column.fn??"局部变量")===group&&isCompound(m.shape)) as m (columnKey(m.column))}
+          {#each list.filter(m=>(m.column.global?"全局 / 静态":m.column.fn??"局部变量")===group&&!isInline(m.shape)) as m (columnKey(m.column))}
             {@const vs=selectedValues(current,m.column)}
             <div class="module-slot" style:--ideal={moduleWidth(m.shape)+"px"}><DataModule shape={m.shape} column={m.column} value={vs.length===1?vs[0]:undefined} previous={matchingPrevious(doc.run,current,m.column)} {active} onSelect={choose} {pulses} pulseSerial={motion.serial} root ambiguous={vs}/></div>
           {/each}
@@ -224,8 +226,8 @@
     {#if !list.length}<div class="empty">没有已记录变量</div>{/if}
   {:else}<div class="empty">没有观察记录 · {reasons[doc.run.reason]??doc.run.reason}{#if doc.run.message}<p>{doc.run.message}</p>{/if}</div>{/if}
 </main>
-{#if detail}<aside class="detail-pane" aria-label={"详情 · "+columnLabel(detail.column)} transition:fly={detailMotion()}>
-  {#key columnKey(detail.column)}<DataModule shape={detail.shape} column={detail.column} value={detailValues.length===1?detailValues[0]:undefined} previous={detailPrevious} {active} onSelect={choose} {pulses} pulseSerial={motion.serial} root ambiguous={detailValues} full/>{/key}
+{#if detail}<aside class="detail-pane" use:resetDetailScroll={detailKey} aria-label={"详情 · "+columnLabel(detail.column)} transition:fly={detailMotion()}>
+  {#key detailKey}<DataModule shape={detail.shape} column={detail.column} value={detailValues.length===1?detailValues[0]:undefined} previous={detailPrevious} {active} onSelect={choose} {pulses} pulseSerial={motion.serial} root ambiguous={detailValues} full/>{/key}
 </aside>{/if}
 </div>
 <Timeline {step} {total} {events} focus={selected?columnLabel(selected):""} onGo={go}/>
@@ -285,8 +287,8 @@
   .data-group{margin-bottom:13px}h2{font-size:12px;margin:0 0 6px;color:var(--muted);font-weight:500}
   .scalars,.compounds{display:flex;flex-wrap:wrap;align-items:flex-start;gap:6px}
   .module-slot{width:min(100%,var(--ideal));max-width:100%;min-width:0}
-  .scalars .module-slot{width:min(100%,var(--ideal))}
-  .compounds{gap:8px;margin-top:8px}.compounds .module-slot{flex:0 1 var(--ideal)}
+  .scalars .module-slot{width:max-content;min-width:min(100%,var(--ideal));max-width:100%}
+  .compounds{gap:8px;margin-top:8px}.compounds .module-slot{flex:0 0 auto;width:min(100%,var(--ideal))}
   .capture-note{color:var(--muted);font-size:11px;margin-bottom:6px}
   .scalars:empty,.compounds:empty{display:none}
   .empty{color:var(--muted);padding:20px;text-align:center}

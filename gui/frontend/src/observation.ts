@@ -136,7 +136,7 @@ export function modules(run:Run):Module[]{
   }
   for(const m of map.values())finishShape(m.shape);
   // Scalars first; stable within category in order first encountered.
-  return [...map.values()].sort((a,b)=>Number(!!a.shape.children.length||["array","struct","union"].includes(a.shape.kind))-Number(!!b.shape.children.length||["array","struct","union"].includes(b.shape.kind)));
+  return [...map.values()].sort((a,b)=>Number(!isInline(a.shape))-Number(!isInline(b.shape)));
 }
 export function member(c:Column,s:{name:string;index?:number}):Column{return {...c,path:[...(c.path??[]),{name:s.index===undefined?s.name:"["+s.index+"]",index:s.index}]};}
 const childCache=new WeakMap<Variable,Map<string,Variable|undefined>>();
@@ -228,12 +228,37 @@ export function visibleModules(list:Module[],s:Snapshot|undefined):Module[]{
   return list.filter(m=>m.column.global||m.column.fn===fn);
 }
 export function isCompound(s:Shape){return !!s.children.length||["array","struct","union"].includes(s.kind);}
+// Strings are compact values in the main workspace, even when recorded
+// with children. Compound cells carry only a summary, never nested tables.
+export function isInline(s:Shape):boolean{return s.kind==="string"||!isCompound(s);}
+export function shapeLabel(s:Shape):string{
+  return s.name+(s.arrayLength!==undefined&&["array","string"].includes(s.kind)?"["+s.arrayLength+"]":"");
+}
+export function compoundSummary(s:Shape,v:Variable|undefined):string{
+  if(!v||v.status!=="observed")return displayValue(v);
+  if(isInline(s))return compactValue(v);
+  if(v.kind==="array"&&v.array_length!==undefined)return "["+v.array_length+"]"+(v.children_complete===false?" · "+(v.children?.length??0):"");
+  return (v.kind==="pointer"?"→ ":"")+"{"+(v.children?.length??0)+"}"+(v.children_complete===false?"…":"");
+}
+export function tableFields(s:Shape):Shape[]{
+  if(s.kind!=="array"||!s.children.every(c=>["array","struct","union","unknown"].includes(c.kind)))return [];
+  return sharedFields(s);
+}
+export function fieldWidth(s:Shape):number{
+  const n=isInline(s)?s.width??1:Math.max(12,String(s.arrayLength??s.children.length).length*2+5);
+  return Math.max(48,Math.min(320,Math.ceil(Math.max(memberLabel(s).replace(/^\./,"").length,n)*8.5+20)));
+}
 export function moduleWidth(s:Shape):number{
-  if(!isCompound(s)||s.kind==="string")return Math.max(66,Math.min(480,(s.name.length+(s.width??1)+3)*8+20));
-  const fields=s.kind==="array"?sharedFields(s):[];
-  if(fields.length&&fields.every(c=>!isCompound(c)))return Math.max(180,Math.min(1100,42+fields.reduce((n,c)=>n+Math.max(45,Math.min(250,8*Math.max(c.name.length,c.width??1)+16)),0)));
-  if(s.kind==="array"&&s.children.every(c=>!isCompound(c)))return Math.max(150,Math.min(1100,arraySegments(s).reduce((n,g)=>n+(g.length>1?126:Math.max(42,Math.min(240,8*Math.max(g[0].width??1,String(g[0].index??g[0].name).length)+16))),0)+14));
-  return Math.max(210,Math.min(1000,s.children.reduce((n,c)=>n+moduleWidth(c)+6,0)+14));
+  if(isInline(s))return Math.max(64,Math.min(560,Math.ceil((shapeLabel(s).length+(s.width??1)+3)*8.5+22)));
+  const fields=tableFields(s);
+  if(fields.length)return Math.max(170,Math.min(1000,48+fields.reduce((n,c)=>n+fieldWidth(c),0)));
+  if(s.kind==="array"&&s.children.every(isInline))return Math.max(130,Math.min(720,arraySegments({...s,children:previewChildren(s)}).reduce((n,g)=>n+(g.length>1?126:Math.max(42,Math.min(240,8.5*Math.max(g[0].width??1,String(g[0].index??g[0].name).length)+18))),0)+14));
+  // A structure is a two-column member list; its width is determined by
+  // the largest direct member, never by the sum of its recursive children.
+  const members=previewChildren(s);
+  const name=Math.max(1,...members.map(c=>shapeLabel(c).length));
+  const value=Math.max(1,...members.map(c=>isInline(c)?c.width??1:Math.max(12,String(c.arrayLength??c.children.length).length*2+5)));
+  return Math.max(210,Math.min(460,Math.ceil((name+value)*8.5+44)));
 }
 export function arraySegments(s:Shape):Shape[][]{
   // Keep changing indices and immediate neighbours visible. Only long runs
@@ -456,19 +481,35 @@ export function compactValue(v:Variable|undefined,root=false):string{
   return stringSummary(v)?.text??displayValue(v,root);
 }
 export function hasDetail(s:Shape):boolean{
-  if(s.kind==="string"||s.kind==="pointer")return s.children.length>0;
-  if(s.kind==="array")return arraySegments(s).some(g=>g.length>1)||s.children.length>8||s.children.some(c=>c.children.length>0&&hasDetail(c))||s.children.some(c=>c.important)&&s.children.length>6;
-  return s.children.length>6||s.children.some(hasDetail);
+  if(s.kind==="string")return s.children.length>0;
+  if(s.kind==="pointer")return s.children.length>0;
+  if(s.kind==="array")return arraySegments(s).some(g=>g.length>1)||s.children.length>6||s.children.some(c=>c.children.some(ch=>!isInline(ch)||ch.kind==="string")||c.kind==="string");
+  return s.children.length>6||s.children.some(c=>!isInline(c)||c.kind==="string");
 }
+// The selected compound itself is the detail target. A selected leaf
+// retains its nearest compound parent, not the entire top-level root.
+// No second user-controlled selection or navigation stack.
 export function detailRoot(list:Module[],selected:Column|null):Module|undefined{
   if(!selected)return undefined;
   const key=columnKey({...selected,path:[]});
   const m=list.find(m=>columnKey(m.column)===key);
-  return m&&hasDetail(m.shape)?m:undefined;
+  if(!m)return undefined;
+  const path=selected.path??[];
+  if(!path.length)return hasDetail(m.shape)?m:undefined;
+  let node=m.shape,c=m.column;
+  let nearest:Module|undefined;
+  for(const part of path){
+    if(node.children.length)nearest={column:c,shape:node};
+    const child=node.children.find(ch=>identity(ch)===identity(part));
+    if(!child)return undefined;
+    node=child;c=member(c,node);
+  }
+  if(node.children.length&&(isCompound(node)||node.kind==="string"))return {column:c,shape:node};
+  return nearest;
 }
 // Bounded main preview, stable across the run. Full pane uses original shape.
 export function previewChildren(s:Shape):Shape[]{
-  const limit=s.kind==="array"?8:6;
+  const limit=6;
   if(s.children.length<=limit)return s.children;
   const chosen=new Set<Shape>(s.children.slice(0,Math.min(3,limit)));
   for(const c of s.children)if(c.important&&chosen.size<limit)chosen.add(c);

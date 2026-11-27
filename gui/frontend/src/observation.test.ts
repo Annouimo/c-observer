@@ -212,7 +212,7 @@ test("character buffer summary uses only contiguous recorded bytes and real term
 test("detail follows root focus and keeps parent context for selected child",()=>{
   const r=loadFixture("adaptive-array").run,l=modules(r),m=l.find(x=>x.column.name==="a")!;
   assert.ok(hasDetail(m.shape));
-  assert.equal(detailRoot(l,member(m.column,m.shape.children[0])),m);
+  assert.deepEqual(detailRoot(l,member(m.column,m.shape.children[0])),m);
   assert.equal(detailRoot(l,null),undefined);
   assert.ok(previewChildren(m.shape).length<=8);
   assert.equal(m.shape.children.length,16);
@@ -236,4 +236,31 @@ test("even short compressed arrays have a detail route and pointer children neve
   const p:Variable={name:"p",kind:"pointer",type:"Team *",status:"observed",value:"0x10"};
   assert.equal(previousChildren(p,{...p,value:"0x20"}),undefined);
   assert.equal(previousChildren(p,{...p}),p);
+});
+
+
+import {isInline,shapeLabel,compoundSummary,tableFields,fieldWidth} from "./observation.ts";
+test("nested course data stays shallow and table-shaped; detail follows the actual path",()=>{
+  const leaf=(name:string,width=3):Shape=>({name,type:"int",kind:"scalar",children:[],width});
+  const str:Shape={name:"name",type:"char[20]",kind:"string",arrayLength:20,width:7,children:[{...leaf("[0]"),index:0}]};
+  const q:Shape={name:"question",type:"Question[20]",kind:"array",arrayLength:20,children:Array.from({length:20},(_,i)=>({name:"["+i+"]",index:i,type:"Question",kind:"struct",children:[leaf("AC_time"),leaf("WA_count")]}))};
+  const row:Shape={name:"[0]",index:0,type:"Team",kind:"struct",children:[leaf("id"),str,leaf("AC_count"),leaf("punish"),q]};
+  const a:Shape={name:"teams",type:"Team[200010]",kind:"array",arrayLength:200010,children:Array.from({length:5},(_,i)=>({...row,index:i,name:"["+i+"]"}))};
+  const x:Shape={...row,name:"x",index:undefined,kind:"pointer",type:"Team *"};
+  assert.deepEqual(tableFields(a).map(c=>c.name),["id","name","AC_count","punish","question"]);
+  assert.ok(moduleWidth(x)<=460);
+  assert.ok(moduleWidth(a)<850);
+  assert.ok(isInline(str));assert.equal(shapeLabel(str),"name[20]");
+  assert.ok(moduleWidth({...leaf("compare_result"),width:3})>=160);
+  assert.ok(fieldWidth(q)<200);
+  const c={name:"x",fn:"compare"},l=[{column:c,shape:x}];
+  const cq=member(c,q),item=member(cq,q.children[2]),score=member(item,q.children[2].children[0]);
+  assert.deepEqual(detailRoot(l,cq),{column:cq,shape:q});
+  assert.deepEqual(detailRoot(l,item),{column:item,shape:q.children[2]});
+  assert.deepEqual(detailRoot(l,score),{column:item,shape:q.children[2]});
+  assert.deepEqual(detailRoot(l,member(c,str)),{column:member(c,str),shape:str});
+  assert.equal(compoundSummary(q,undefined),"?");
+  const v:Variable={name:"question",kind:"array",type:"Question[20]",status:"observed",array_length:20,children:[],children_complete:false};
+  assert.equal(compoundSummary(q,v),"[20] · 0");
+  assert.equal(previewChildren(q).length,6);
 });
