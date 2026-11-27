@@ -14,23 +14,31 @@
   let segments=$derived(shape.kind==="array"?arraySegments(shape):[]);
   let expanded=$state<number[]>([]);
   let arrayNode:HTMLDivElement;
-  let rangeMotion:Animation|undefined;
+  let rangeMotion:Animation[]=[];
+  let rangeRequest=0;
   async function toggleRange(i:number){
     expanded=expanded.includes(i)?expanded.filter(x=>x!==i):[...expanded,i];
-    rangeMotion?.cancel();
+    const request=++rangeRequest;
+    rangeMotion.forEach(a=>a.cancel());rangeMotion=[];
     await tick();
-    if(matchMedia("(prefers-reduced-motion: reduce)").matches)return;
-    const el=arrayNode?.querySelector<HTMLElement>('[data-range="'+i+'"]');
-    if(el?.animate)rangeMotion=el.animate([{opacity:.3,transform:"translateY(-3px)"},{opacity:1,transform:"translateY(0)"}],{duration:150,easing:"ease-out"});
+    if(request!==rangeRequest||matchMedia("(prefers-reduced-motion: reduce)").matches)return;
+    const nodes=arrayNode?.querySelectorAll<HTMLElement>('[data-range="'+i+'"],[data-range-item="'+i+'"]');
+    if(!nodes)return;
+    // Animate only newly revealed local content, never the whole data layout.
+    for(const el of Array.from(nodes).slice(0,12))if(el.animate)rangeMotion.push(el.animate([{opacity:.25,transform:"translateY(-3px)"},{opacity:1,transform:"translateY(0)"}],{duration:160,easing:"ease-out"}));
   }
   function flash(node:HTMLElement,initial:number){
     let a:Animation|undefined;
-    return {update(serial:number){
+    function update(serial:number){
       a?.cancel();
       if(serial&&node.animate&&!matchMedia("(prefers-reduced-motion: reduce)").matches){
-        a=node.animate([{boxShadow:"inset 0 0 0 100px var(--flash)"},{boxShadow:"inset 0 0 0 100px transparent"}],{duration:180,easing:"ease-out"});
+        // Explicit RGBA avoids custom-property interpolation differences
+        // in the platform WebView. Do not animate the value itself.
+        a=node.animate([{boxShadow:"inset 0 0 0 100px rgba(57,120,208,.28)"},{boxShadow:"inset 0 0 0 100px rgba(57,120,208,0)"}],{duration:200,easing:"ease-out"});
       }
-    },destroy(){a?.cancel();}};
+    }
+    update(initial);
+    return {update,destroy(){a?.cancel();}};
   }
   function pulse(c:Column){return pulses.has(columnKey(c))?pulseSerial:0;}
   let coverage=$derived(coverageNote(shape,value,root));
@@ -67,7 +75,7 @@
             {#if expanded.includes(i)&&folded!==undefined}<button class="range-close" data-range={i} onclick={()=>toggleRange(i)}>收起 {segment[0].index}–{segment.at(-1)?.index}</button>{/if}
             {#each segment as ch}
               {@const c=member(column,ch)}{@const v=childValue(value,ch)}{@const p=childValue(previous,ch)}
-              <button use:flash={pulse(c)} class="element" style:width={Math.max(42,Math.min(350,8*Math.max(ch.width??1,String(ch.index??ch.name).length)+16))+"px"} class:chosen={active===columnKey(c)} class:diff={observedChange(p,v)} class:unknown={!v||v.status!=="observed"} aria-pressed={active===columnKey(c)} onclick={()=>onSelect(c)} title={columnLabel(c)+": "+statusHint(v)+(observedChange(p,v)?"（之前 "+displayValue(p)+"）":"")}>
+              <button use:flash={pulse(c)} data-range-item={segment.length>1?i:undefined} class="element" style:width={Math.max(42,Math.min(350,8*Math.max(ch.width??1,String(ch.index??ch.name).length)+16))+"px"} class:chosen={active===columnKey(c)} class:diff={observedChange(p,v)} class:unknown={!v||v.status!=="observed"} aria-pressed={active===columnKey(c)} onclick={()=>onSelect(c)} title={columnLabel(c)+": "+statusHint(v)+(observedChange(p,v)?"（之前 "+displayValue(p)+"）":"")}>
                 <small>{ch.index??ch.name}</small><span>{displayValue(v)}</span>
               </button>
             {/each}
@@ -98,7 +106,6 @@
   .number{font:600 14px/1.35 var(--mono);flex:0 0 auto;max-width:65%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
   .scalar.diff .number{font-weight:700}
   .diff{color:var(--accent);background:var(--soft)}
-  button{--flash:rgba(57,120,208,.20)}
   .unknown .number,.unknown.cell,.unknown.element{color:var(--muted)}
   small{color:var(--muted);font-size:11px}
   .heading{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:6px 9px;border-bottom:1px solid var(--line);font:600 13px var(--mono);min-height:32px}

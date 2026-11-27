@@ -2,19 +2,20 @@
   import example from "../../../testdata/snapshots/wrong-index.json";
   import DataModule from "./DataModule.svelte";
   import Timeline from "./Timeline.svelte";
-  import {parseDocument,modules,selectedValues,matchingPrevious,changeEvents,navigationTarget,pulseTargets,columnKey,columnLabel,outputText,MAX_BYTES,visibleModules,isCompound,moduleWidth,replayContext,sampleResult,outputRows,sourceTokens,samplePreview,sourceMotion,type Column} from "./observation";
+  import {parseDocument,modules,selectedValues,matchingPrevious,changeEvents,navigationTarget,replayFeedback,columnKey,columnLabel,outputText,MAX_BYTES,visibleModules,isCompound,moduleWidth,replayContext,sampleResult,outputRows,sourceTokens,samplePreview,type Column,type NavigationMode} from "./observation";
   let doc=$state(parseDocument(example));
   let step=$state(0);
-  let motion=$state({offset:0,serial:0});
+  let motion=$state({offset:0,duration:135,serial:0});
+  let lastNavigation=-Infinity;
   let pulses=$state<Set<string>>(new Set());
   // Only the small source strip moves. No animation queue and no delayed
   // snapshot state; cancel on new input and respect the OS motion preference.
-  function slide(node:HTMLElement,initial:{offset:number;serial:number}){
+  function slide(node:HTMLElement,initial:{offset:number;duration:number;serial:number}){
     let animation:Animation|undefined;
-    return {update(next:{offset:number;serial:number}){
+    return {update(next:{offset:number;duration:number;serial:number}){
       animation?.cancel();
       if(next.offset&&!matchMedia("(prefers-reduced-motion: reduce)").matches&&typeof node.animate==="function"){
-        animation=node.animate([{transform:"translateY("+next.offset+"px)"},{transform:"translateY(0)"}],{duration:135,easing:"ease-out"});
+        animation=node.animate([{transform:"translateY("+next.offset+"px)"},{transform:"translateY(0)"}],{duration:next.duration,easing:"ease-out"});
       }
     },destroy(){animation?.cancel();}};
   }
@@ -51,12 +52,14 @@
   let sourcePath=$state("");
   let fullLines=$derived(doc.run.session.sources.find(s=>s.path===sourcePath)?.text.split(/\r?\n/)??[]);
   const reasons:Record<string,string>={exited:"运行结束",nonzero_exit:"非零退出",signaled:"异常终止",compile_failed:"编译失败",limit_reached:"采集上限",timed_out:"超时",cancelled:"已取消",backend_failed:"采集失败",invalid_config:"配置错误"};
-  function go(id:number,animate=true){
+  function go(id:number,mode:NavigationMode="direct"){
     if(!total||!Number.isFinite(id))return;
     const next=Math.max(0,Math.min(total-1,Math.round(id)));
     if(next===step)return;
-    pulses=animate?pulseTargets(doc.run,step,next):new Set();
-    motion={offset:animate?sourceMotion(doc.run,step,next):0,serial:motion.serial+1};
+    const now=performance.now(),feedback=replayFeedback(doc.run,step,next,mode,now-lastNavigation);
+    lastNavigation=now;
+    pulses=feedback.pulses;
+    motion={offset:feedback.offset,duration:feedback.duration,serial:motion.serial+1};
     step=next;
   }
   function choose(c:Column){selected=active===columnKey(c)?null:c;}
@@ -74,7 +77,7 @@
       if(file.size>MAX_BYTES)throw Error("文件超过 128 MiB");
       const next=parseDocument(JSON.parse(await file.text()));
       outputText(next.run.output.stdout);outputText(next.run.output.stderr);
-      eventCache=new Map();pulses=new Set();motion={offset:0,serial:motion.serial+1};doc=next;step=0;selected=null;error="";
+      eventCache=new Map();lastNavigation=-Infinity;pulses=new Set();motion={offset:0,duration:135,serial:motion.serial+1};doc=next;step=0;selected=null;error="";
     }catch(e){error=e instanceof Error?e.message:String(e);}
     input.value="";
   }

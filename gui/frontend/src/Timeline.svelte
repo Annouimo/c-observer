@@ -1,7 +1,7 @@
 <script lang="ts">
   import {tick} from "svelte";
-  import {trackPosition,markerHit,navigationTarget,markerPath} from "./observation";
-  let {step,total,events,focus,onGo}:{step:number;total:number;events:number[];focus:string;onGo:(id:number,animate?:boolean)=>void}=$props();
+  import {trackPosition,markerHit,navigationTarget,markerPath,type NavigationMode} from "./observation";
+  let {step,total,events,focus,onGo}:{step:number;total:number;events:number[];focus:string;onGo:(id:number,mode?:NavigationMode)=>void}=$props();
   let marks=$derived(markerPath(events,total));
   let progress=$derived(total>1?step/(total-1)*100:0);
   let track:HTMLDivElement;
@@ -20,14 +20,14 @@
   function move(e:PointerEvent){
     if(pointer!==e.pointerId)return;
     if(Math.hypot(e.clientX-startX,e.clientY-startY)>3)moved=true;
-    if(moved)onGo(Math.round(position(e).p),false);
+    if(moved)onGo(Math.round(position(e).p),"drag");
   }
   function up(e:PointerEvent){
     if(pointer!==e.pointerId)return;
     const {p,width,band}=position(e);
     pointer=null;
     if(track.hasPointerCapture(e.pointerId))track.releasePointerCapture(e.pointerId);
-    onGo(!moved&&band?(markerHit(events,p,total,width)??Math.round(p)):Math.round(p),!moved);
+    onGo(!moved&&band?(markerHit(events,p,total,width)??Math.round(p)):Math.round(p),moved?"drag":"direct");
   }
   function cancel(){pointer=null;}
   function keys(e:KeyboardEvent){
@@ -46,7 +46,7 @@
       const amount=raw*(e.deltaMode===1?16:e.deltaMode===2?120:1);
       if(Math.sign(amount)!==Math.sign(wheelSum))wheelSum=0;
       wheelSum+=amount;
-      if(Math.abs(wheelSum)>=22){const d=Math.sign(wheelSum);wheelSum=0;onGo(step+d);}
+      if(Math.abs(wheelSum)>=22){const d=Math.sign(wheelSum);wheelSum=0;onGo(step+d,"drag");}
     }
     node.addEventListener("wheel",handle,{passive:false});
     return {destroy(){node.removeEventListener("wheel",handle);}};
@@ -57,15 +57,8 @@
   }
   function finish(commit:boolean){
     if(!editing)return;
-    if(commit&&/^\d+$/.test(draft.trim()))onGo(Number(draft)-1,false);
+    if(commit&&/^\d+$/.test(draft.trim()))onGo(Number(draft)-1,"seek");
     editing=false;
-  }
-  function markMotion(node:SVGSVGElement,initial:string){
-    let a:Animation|undefined;
-    return {update(next:string){
-      a?.cancel();
-      if(next&&typeof node.animate==="function"&&!matchMedia("(prefers-reduced-motion: reduce)").matches)a=node.animate([{opacity:.15},{opacity:1}],{duration:140,easing:"ease-out"});
-    },destroy(){a?.cancel();}};
   }
 </script>
 <footer>
@@ -80,7 +73,7 @@
   <div class="track" bind:this={track} role="slider" tabindex={total?0:-1} aria-label="观察时间线" aria-valuemin={total?1:0} aria-valuemax={total} aria-valuenow={total?step+1:0} aria-disabled={total<2} title="拖动定位 · 点击上方标记跳转 · 滚轮微调 · Shift + 方向键切换变化"
     onpointerdown={down} onpointermove={move} onpointerup={up} onpointercancel={cancel} onlostpointercapture={cancel} onkeydown={keys} use:wheel>
     <div class="rail"><div class="progress" style:width={progress+"%"}></div></div>
-    <svg class="markers" viewBox="0 0 1000 12" preserveAspectRatio="none" aria-hidden="true" use:markMotion={focus}><path d={marks} vector-effect="non-scaling-stroke"/></svg>
+    <svg class="markers" viewBox="0 0 1000 12" preserveAspectRatio="none" aria-hidden="true">{#key focus+"\n"+marks}<path class="mark-reveal" d={marks} vector-effect="non-scaling-stroke"/>{/key}</svg>
     <div class="thumb-zone"><div class="thumb" style:left={progress+"%"}></div></div>
   </div>
 </footer>
@@ -98,6 +91,9 @@
   .progress{height:100%;background:var(--accent);opacity:.32;border-radius:inherit}
   .markers{position:absolute;left:8px;width:calc(100% - 16px);height:12px;top:8px;overflow:visible;pointer-events:none}
   .markers path{stroke:var(--accent);stroke-width:1.6;fill:none}
+  .mark-reveal{animation:mark-reveal 180ms ease-out}
+  @keyframes mark-reveal{from{opacity:0}to{opacity:1}}
+  @media(prefers-reduced-motion:reduce){.mark-reveal{animation:none}}
   .thumb-zone{position:absolute;left:8px;right:8px;top:23px;pointer-events:none}
   .thumb{position:absolute;width:16px;height:16px;border-radius:50%;background:var(--accent);border:2px solid var(--panel);box-shadow:0 0 0 1px var(--accent);transform:translate(-50%,-50%)}
   .track:focus-visible,.position:focus-visible,.position input:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}

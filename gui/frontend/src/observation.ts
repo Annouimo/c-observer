@@ -332,10 +332,12 @@ export function coverageNote(shape:Shape,value:Variable|undefined,root=false):st
 }
 // Direction refers to observed source positions, not an inferred execution
 // path. Only adjacent replay steps in the same mapped source animate.
-export function sourceMotion(run:Run,from:number,to:number):number{
-  if(Math.abs(from-to)!==1)return 0;
+export function sourceMotion(run:Run,from:number,to:number,nearSeek=false):number{
+  const distance=Math.abs(from-to);
+  if(!distance||distance>1&&!nearSeek)return 0;
   const a=replayContext(run,from).origin,b=replayContext(run,to).origin;
   if(!a||!b||!a.file||a.file!==b.file||a.line<=0||b.line<=0||!run.session.sources.some(s=>s.path===a.file))return 0;
+  if(distance>1&&(distance>4||Math.abs(b.line-a.line)>2))return 0;
   return Math.max(-2,Math.min(2,b.line-a.line))*21;
 }
 
@@ -388,4 +390,18 @@ export function pulseTargets(run:Run,from:number,to:number,limit=12):Set<string>
     if(out.size>limit)return new Set();
   }
   return out;
+}
+
+
+export type NavigationMode="direct"|"drag"|"seek";
+// Source direction is useful even during scrubbing. Keep it independent
+// of the data pulse budget; rapidly changing samples must not flash.
+export function replayFeedback(run:Run,from:number,to:number,mode:NavigationMode,elapsed:number){
+  if(mode==="seek")return {offset:0,duration:135,pulses:new Set<string>()};
+  const rapid=mode==="drag"&&elapsed<90;
+  return {
+    offset:sourceMotion(run,from,to,true),
+    duration:rapid?85:135,
+    pulses:rapid?new Set<string>():pulseTargets(run,from,to)
+  };
 }

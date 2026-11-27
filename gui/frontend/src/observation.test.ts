@@ -175,3 +175,19 @@ test("flash targets compare only adjacent actual leaf values in either direction
   assert.equal(statusHint(undefined,true),"当前观察无对应对象");
   assert.equal(statusHint(undefined,false),"当前观察未记录该成员");
 });
+
+
+import {replayFeedback} from "./observation.ts";
+test("normal scrub uses the same semantic motion as step navigation; rapid scrub only suppresses pulses",()=>{
+  const r=run();
+  assert.equal(replayFeedback(r,1,2,"drag",200).offset,21);
+  assert.equal(replayFeedback(r,2,3,"drag",20).offset,-42);
+  assert.equal(replayFeedback(r,2,3,"drag",20).duration,85);
+  assert.equal(replayFeedback(r,4,5,"drag",200).pulses.size,1);
+  assert.equal(replayFeedback(r,4,5,"drag",20).pulses.size,0);
+  assert.equal(replayFeedback(r,5,4,"direct",0).pulses.size,1);
+  assert.equal(replayFeedback(r,1,3,"direct",0).offset,-21);
+  assert.equal(replayFeedback(r,0,5,"drag",200).offset,0);
+  assert.equal(replayFeedback(r,1,2,"seek",200).offset,0);
+  assert.equal(replayFeedback(r,4,5,"seek",200).pulses.size,0);
+});
