@@ -1,7 +1,7 @@
 <script lang="ts">
   import example from "../../../testdata/snapshots/wrong-index.json";
   import DataValue from "./DataValue.svelte";
-  import { parseDocument, tokenize, groupTrace, values, changed, previousValue, columnKey, outputText, MAX_BYTES, type Column, type Location, type Snapshot, type TraceNode, type Token } from "./observation";
+  import { parseDocument, tokenize, groupTrace, values, changed, previousValue, columnKey, outputText, MAX_BYTES, type Column, type Location, type Snapshot, type TraceNode } from "./observation";
 
   let doc = $state(parseDocument(example));
   let mode = $state<"trace"|"source"|"io">("trace");
@@ -41,7 +41,7 @@
     const k=columnKey(c);
     columns=columns.some(x=>columnKey(x)===k)?columns.filter(x=>columnKey(x)!==k):[...columns,c];
   }
-  function choose(name: string, fn?: string) {
+  function choose(name: string, fn: string | undefined) {
     const c=names.find(x=>x.name===name && x.fn===fn && !x.global)??names.find(x=>x.name===name && x.global);
     if(c) toggle(c);
     else if(names.some(x=>x.name===name)) toggle({name,fn});
@@ -54,12 +54,12 @@
   function tokensAt(s: Snapshot) { return sourceTokens.get(s.location.file)?.[s.location.line-1]??[]; }
 </script>
 
-{#snippet code(tokens: Token[], fn: string | undefined)}
+{#snippet code(tokens, fn)}
   <span class="code">{#each tokens as token}{#if token.kind==="identifier"&&selectable(token.text)}
     <button class="token" class:selected={columns.some(c=>c.name===token.text&&(!c.fn||c.fn===fn))} onclick={()=>choose(token.text,fn)} title="添加或移除观察列">{token.text}</button>
   {:else}<span class={token.kind}>{token.text}</span>{/if}{/each}</span>
 {/snippet}
-{#snippet snapshot(s:Snapshot,indent:number)}
+{#snippet snapshot(s, indent)}
   <tr>
     <td class="seq">{s.id+1}</td>
     <td><button class="line" onclick={()=>selectLine(s.location)} disabled={!s.location.line||!s.location.file}>{s.location.line||"—"}</button></td>
@@ -79,7 +79,7 @@
     </div></td></tr>
   {/if}
 {/snippet}
-{#snippet trace(items: TraceNode[], indent:number)}
+{#snippet trace(items, indent)}
   {#each items as n}
     {#if n.kind==="observation"}{@render snapshot(n.snapshot,indent)}
     {:else}
