@@ -448,13 +448,16 @@ export function stringSummary(v:Variable|undefined):{text:string;end?:number;com
   if(!text&&v.value!==undefined&&v.value!=="")return {text:v.value+" · 摘要",complete:false};
   return {text:'"'+text+'"…',complete:false};
 }
+export function previousChildren(before:Variable|undefined,now:Variable|undefined):Variable|undefined{
+  return before?.kind==="pointer"&&(!now||before.value!==now.value)?undefined:before;
+}
 export function compactValue(v:Variable|undefined,root=false):string{
   if(v?.kind==="pointer"&&v.status==="observed")return (v.value??"?")+(v.value_truncated?"…":"");
   return stringSummary(v)?.text??displayValue(v,root);
 }
 export function hasDetail(s:Shape):boolean{
   if(s.kind==="string"||s.kind==="pointer")return s.children.length>0;
-  if(s.kind==="array")return s.children.length>8||s.children.some(c=>c.children.length>0&&hasDetail(c))||s.children.some(c=>c.important)&&s.children.length>6;
+  if(s.kind==="array")return arraySegments(s).some(g=>g.length>1)||s.children.length>8||s.children.some(c=>c.children.length>0&&hasDetail(c))||s.children.some(c=>c.important)&&s.children.length>6;
   return s.children.length>6||s.children.some(hasDetail);
 }
 export function detailRoot(list:Module[],selected:Column|null):Module|undefined{

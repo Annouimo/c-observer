@@ -227,3 +227,13 @@ test("typed pointer address changes count even with children, never match old ta
   assert.deepEqual(changeEvents(r,c),[1]);
   assert.equal(matchingPrevious(r,r.snapshots[1],member(c,ch)),undefined);
 });
+
+
+import {previousChildren} from "./observation.ts";
+test("even short compressed arrays have a detail route and pointer children never compare across addresses",()=>{
+  const shape:Shape={name:"a",kind:"array",type:"int[4]",children:Array.from({length:4},(_,i)=>({name:"["+i+"]",index:i,kind:"scalar",type:"int",constant:"0",children:[]}))};
+  assert.equal(hasDetail(shape),true);
+  const p:Variable={name:"p",kind:"pointer",type:"Team *",status:"observed",value:"0x10"};
+  assert.equal(previousChildren(p,{...p,value:"0x20"}),undefined);
+  assert.equal(previousChildren(p,{...p}),p);
+});

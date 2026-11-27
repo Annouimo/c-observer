@@ -285,7 +285,7 @@
   .data-group{margin-bottom:13px}h2{font-size:12px;margin:0 0 6px;color:var(--muted);font-weight:500}
   .scalars,.compounds{display:flex;flex-wrap:wrap;align-items:flex-start;gap:6px}
   .module-slot{width:min(100%,var(--ideal));max-width:100%;min-width:0}
-  .scalars .module-slot{width:fit-content;max-width:min(100%,var(--ideal))}
+  .scalars .module-slot{width:min(100%,var(--ideal))}
   .compounds{gap:8px;margin-top:8px}.compounds .module-slot{flex:0 1 var(--ideal)}
   .capture-note{color:var(--muted);font-size:11px;margin-bottom:6px}
   .scalars:empty,.compounds:empty{display:none}

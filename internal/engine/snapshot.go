@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -221,6 +222,10 @@ func (c *capture) collectGlobals(ref int, nodes *int, seen map[declarationKey]bo
 	if err != nil {
 		return err
 	}
+	counts := make(map[string]int, len(vars))
+	for _, raw := range vars {
+		counts[variableName(raw)]++
+	}
 	for _, raw := range vars {
 		decl := raw.Extensions.Declaration
 		var key declarationKey
@@ -229,7 +234,7 @@ func (c *capture) collectGlobals(ref int, nodes *int, seen map[declarationKey]bo
 		if decl != nil {
 			key = declarationKey{variableName(raw), c.location(decl.Path, decl.Line, "").File, decl.Line}
 			scope = c.index.globals[key]
-		} else {
+		} else if counts[variableName(raw)] == 1 {
 			key, scope = c.index.uniqueGlobal(variableName(raw))
 		}
 		if scope == "" || seen[key] {
@@ -376,6 +381,10 @@ func (c *capture) variable(raw dapVariable, id, path string, rootDeclaration *ob
 	}
 	children, err := c.variables(raw.VariablesReference, start, count)
 	if err != nil {
+		var rejected dapRejectedError
+		if v.Kind == observer.Pointer && errors.As(err, &rejected) {
+			return v, nil // The address is known, the target is not readable.
+		}
 		return v, err
 	}
 	for i, child := range children {
@@ -395,6 +404,10 @@ func (c *capture) variable(raw dapVariable, id, path string, rootDeclaration *ob
 		}
 		observed, err := c.variable(child, fmt.Sprintf("%s/%d", id, i), childPath, rootDeclaration, depth+1, nodes)
 		if err != nil {
+			var rejected dapRejectedError
+			if v.Kind == observer.Pointer && errors.As(err, &rejected) {
+				return v, nil
+			}
 			return v, err
 		}
 		observed.Index = index

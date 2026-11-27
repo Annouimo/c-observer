@@ -1,12 +1,13 @@
 <script lang="ts">
   import Self from "./DataModule.svelte";
-  import {columnKey,columnLabel,member,memberLabel,childValue,observedChange,displayValue,sharedFields,label,arraySegments,foldValue,moduleWidth,coverageNote,statusHint,compactValue,stringSummary,hasDetail,previewChildren,type Shape,type Variable,type Column} from "./observation";
+  import {columnKey,columnLabel,member,memberLabel,childValue,observedChange,displayValue,sharedFields,label,arraySegments,foldValue,moduleWidth,coverageNote,statusHint,compactValue,stringSummary,hasDetail,previewChildren,previousChildren,type Shape,type Variable,type Column} from "./observation";
   let {shape,column,value,previous,active,onSelect,root=false,ambiguous=[],pulses=new Set<string>(),pulseSerial=0,full=false}:{
     shape:Shape;column:Column;value?:Variable;previous?:Variable;active:string;
     onSelect:(c:Column)=>void;root?:boolean;ambiguous?:Variable[];pulses?:Set<string>;pulseSerial?:number;full?:boolean;
   }=$props();
   let chosen=$derived(active===columnKey(column));
   let diff=$derived(observedChange(previous,value));
+  let childPrevious=$derived(previousChildren(previous,value));
   let summary=$derived(stringSummary(value));
   let shown=$derived(full?shape.children:hasDetail(shape)?previewChildren(shape):shape.children);
   let compound=$derived(shape.children.length>0||["array","struct","union"].includes(shape.kind));
@@ -43,11 +44,11 @@
     </button>
     {#if full&&shape.kind==="string"}
       {#if summary}<div class="string-value">{summary.text}</div>{/if}
-      <div class="array inner-scroll">{#each shown as ch}{@const c=member(column,ch)}{@const v=childValue(value,ch)}{@const p=childValue(previous,ch)}<button use:flash={pulse(c)} class="element character" class:tail={summary?.end!==undefined&&ch.index!==undefined&&ch.index>summary.end} class:terminator={summary?.end!==undefined&&ch.index===summary.end} class:chosen={active===columnKey(c)} class:diff={observedChange(p,v)} onclick={()=>onSelect(c)} title={columnLabel(c)+": "+statusHint(v)}><small>{ch.index??ch.name}</small><span>{displayValue(v)}</span></button>{/each}</div>
+      <div class="array inner-scroll">{#each shown as ch}{@const c=member(column,ch)}{@const v=childValue(value,ch)}{@const p=childValue(childPrevious,ch)}<button use:flash={pulse(c)} class="element character" class:tail={summary?.end!==undefined&&ch.index!==undefined&&ch.index>summary.end} class:terminator={summary?.end!==undefined&&ch.index===summary.end} class:chosen={active===columnKey(c)} class:diff={observedChange(p,v)} onclick={()=>onSelect(c)} title={columnLabel(c)+": "+statusHint(v)}><small>{ch.index??ch.name}</small><span>{displayValue(v)}</span></button>{/each}</div>
     {:else if tabular}
       <div class="inner-scroll"><table><colgroup><col style:width="38px"/>{#each fields as field}<col style:width={Math.max(45,8*Math.max(field.name.length,field.width??1)+16)+"px"}/>{/each}</colgroup><thead><tr><th aria-label="下标"></th>{#each fields as field}<th>{memberLabel(field).replace(/^\./,"")}</th>{/each}</tr></thead>
         <tbody>{#each shown as row}
-          {@const rv=childValue(value,row)}{@const rp=childValue(previous,row)}{@const rc=member(column,row)}
+          {@const rv=childValue(value,row)}{@const rp=childValue(childPrevious,row)}{@const rc=member(column,row)}
           <tr><th><button class="index" class:chosen={active===columnKey(rc)} aria-pressed={active===columnKey(rc)} onclick={()=>onSelect(rc)}>{row.index??row.name}</button></th>
             {#each fields as field}
               {@const v=childValue(rv,field)}{@const p=childValue(rp,field)}{@const c=member(rc,field)}
@@ -64,7 +65,7 @@
             <button class="range" data-range={i} onclick={()=>onSelect(column)} title="关注数组并查看完整已记录元素"><small>{segment[0].index}–{segment.at(-1)?.index}</small><span>{folded} × {segment.length} ›</span></button>
           {:else}
             {#each segment as ch}
-              {@const c=member(column,ch)}{@const v=childValue(value,ch)}{@const p=childValue(previous,ch)}
+              {@const c=member(column,ch)}{@const v=childValue(value,ch)}{@const p=childValue(childPrevious,ch)}
               <button use:flash={pulse(c)} data-range-item={segment.length>1?i:undefined} class="element" style:width={Math.max(42,Math.min(350,8*Math.max(ch.width??1,String(ch.index??ch.name).length)+16))+"px"} class:chosen={active===columnKey(c)} class:diff={observedChange(p,v)} class:unknown={!v||v.status!=="observed"} aria-pressed={active===columnKey(c)} onclick={()=>onSelect(c)} title={columnLabel(c)+": "+statusHint(v)+(observedChange(p,v)?"（之前 "+displayValue(p)+"）":"")}>
                 <small>{ch.index??ch.name}</small><span>{displayValue(v)}</span>
               </button>
@@ -75,7 +76,7 @@
     {:else}
       <div class="members inner-scroll">
         {#each shown as ch}
-          <div class="nested" style:--ideal={moduleWidth(ch)+"px"}><Self shape={ch} column={member(column,ch)} value={childValue(value,ch)} previous={childValue(previous,ch)} {active} {onSelect} {pulses} {pulseSerial} {full}/></div>
+          <div class="nested" style:--ideal={moduleWidth(ch)+"px"}><Self shape={ch} column={member(column,ch)} value={childValue(value,ch)} previous={childValue(childPrevious,ch)} {active} {onSelect} {pulses} {pulseSerial} {full}/></div>
         {/each}
         {#if !shape.children.length}<small>没有已记录成员</small>{/if}
       </div>
