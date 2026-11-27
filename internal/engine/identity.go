@@ -272,6 +272,9 @@ func (m mainIdentity) mark(v *observer.Variable, name string) {
 
 func markObject(v *observer.Variable, id string) {
 	v.ID, v.IdentityReliable = id, true
+	if v.Kind == observer.Pointer {
+		return // The address can change; pointee identity is not pointer identity.
+	}
 	keys := make(map[string]int, len(v.Children))
 	for _, child := range v.Children {
 		keys[memberKey(child)]++
@@ -293,4 +296,23 @@ func memberKey(v observer.Variable) string {
 		return ""
 	}
 	return "." + v.Name
+}
+
+
+// The adapter's global/static scope plus a unique indexed file-scope name
+// permits a display match when declaration metadata is absent. It never
+// upgrades the object to reliable identity or includes function statics.
+func (i sourceIndex) uniqueGlobal(name string) (declarationKey, observer.VariableScope) {
+	var key declarationKey
+	var scope observer.VariableScope
+	for k, s := range i.globals {
+		if k.name != name {
+			continue
+		}
+		if scope != "" || (s != observer.GlobalScope && s != observer.FileStaticScope) {
+			return declarationKey{}, ""
+		}
+		key, scope = k, s
+	}
+	return key, scope
 }

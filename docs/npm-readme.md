@@ -1,31 +1,11 @@
-# C Observer
+# C Observer GUI
 
-面向 C 语言课程的离线程序运行观察器。记录 C 程序的执行快照，在终端查看源码、变量、数组、调用栈与输入输出。不是 AI 解题工具，也不是在线评测系统。
+C 语言课程离线运行观察器，以数据和时间线替代 printf 调试。不是 AI 解题工具或 OJ。
 
-本包是 Accoding Companion 使用的原生二进制分发包。npm 只负责分发，不在观察期间运行 Node.js，也不通过安装脚本联网下载文件。
+支持 Apple Silicon macOS（Clang/LLDB，macOS 12+）和 Windows 11 x64（课程 GCC 16.2.0 / Python-enabled GDB，PATH 已配置，系统 WebView2）。不附带编译工具链；不支持 Intel Mac 或 Linux GUI。Mac 应用 ad-hoc 签名、未公证。
 
-新发行包名为 `@routilet/c-observer`，历史 `@annouimo/c-observer` 版本仍可使用。
+独立使用：下载 GitHub Releases 对应 ZIP，解压后运行 C Observer.app 或 c-observer.exe，无需 npm/Node.js。选择 .c 源文件、输入及可选预期输出，运行观察。点击数据关注变化和详情，拖动时间线回放。可重跑、取消、保存记录；记录包括源文件、本地路径、样例和数据，分享前检查。
 
-## 支持平台
+npm 包 @routilet/c-observer 用于原生分发，不含安装脚本和全局 shim。beta 使用 next 标签，不替换 0.1.2 latest。manifest.json 提供可执行文件相对路径、SHA256 及 session 版本；Mac 路径位于 APP 内部。Companion 完整 GUI 联调尚未完成。支持 --version、--capabilities、--session FILE、--replay FILE。
 
-包含 macOS arm64/x64（Clang/LLDB）、Linux x64（GCC/GDB 或 Clang/LLDB）、Windows x64（GCC/GDB）原生二进制。GDB 需支持 Python；本包不安装编译器或调试器。二进制能够启动不等于本机调试工具链已经配置好。
-
-Companion 根据 manifest.json 选择本机程序并使用版本化会话协议调用。独立使用者应从项目的 发行工作流的原生归档（GitHub Releases 如已提供）获取对应平台的原生程序，无需 npm 或 Node.js。
-
-```sh
-c-observer
-c-observer main.c
-c-observer --replay observation.json
-c-observer --version
-c-observer --capabilities
-```
-
-以上命令以已位于对应原生程序所在目录或 PATH 中为前提；npm 包不安装全局 CLI shim。
-
-源码与协议：https://github.com/Routilet/c-observer
-
-MIT License；第三方许可证及声明见 THIRD_PARTY_NOTICES.txt。考试中使用须符合课程规定。
-
-## 观察记录（0.1.1）
-
-现场观察完成后，在数据页或结果页按 **W**，确认后将完整 JSON 记录保存到用户主目录。界面显示文件位置；记录含源码、输入输出、快照及本地路径，分享前检查敏感内容。使用 `c-observer --replay <文件路径>` 离线打开记录，不需要编译器或调试器。Windows 使用对应的 c-observer.exe。R 在离线模式只重置回放，无法重新采集。参见 [记录格式](https://github.com/Routilet/c-observer/blob/main/docs/record-format.md)。
+MIT；第三方许可证见 THIRD_PARTY_NOTICES.txt。考试使用须符合课程规定。

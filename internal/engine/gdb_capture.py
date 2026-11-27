@@ -181,6 +181,33 @@ def _value(name, path, value, identity, reliable, budget, depth, decl, index=Non
             obj["value"] = text[:1024]
             if len(text) > 1024:
                 obj["value_truncated"] = True
+            if code == gdb.TYPE_CODE_PTR:
+                obj["children_complete"] = False
+                # One root-level pointer to a struct/union, never follow a
+                # nested pointer or scan memory beyond its declared object.
+                target = typ.target().strip_typedefs()
+                if (depth == 0 and depth < _opts["Depth"] and budget[0] > 0
+                        and target.code in (gdb.TYPE_CODE_STRUCT, gdb.TYPE_CODE_UNION)
+                        and int(value) != 0):
+                    try:
+                        pointee = value.dereference()
+                        fields = target.fields()
+                        children = []
+                        for offset, field in enumerate(fields[:16]):
+                            if budget[0] <= 0:
+                                break
+                            if not field.name:
+                                continue
+                            try:
+                                child = pointee[field]
+                            except (gdb.error, ValueError):
+                                child = None
+                            children.append(_value(field.name, path + "." + field.name, child,
+                                                   identity + "/pointee-" + str(offset), False,
+                                                   budget, depth + 1, decl))
+                        obj.update(children=children, children_complete=len(children) == len(fields))
+                    except (gdb.error, ValueError, OverflowError):
+                        pass  # Address remains a recorded value, target unavailable.
     except (gdb.error, ValueError, OverflowError):
         obj["status"] = "unavailable"
     return obj

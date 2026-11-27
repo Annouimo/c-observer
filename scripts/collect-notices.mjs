@@ -18,15 +18,15 @@ async function legalFiles(root, recursive = true) {
   return results.sort();
 }
 
-export async function collectNotices(destination, targets) {
+export async function collectNotices(destination, targets, entry='./cmd/c-observer') {
   if (!targets?.length) throw Error("No distribution targets specified");
   // The full module graph includes test-only and platform-exclusive dependencies.
   // Collect the union of packages required by the actual shipped builds instead.
   // A newly shipped target is automatically included and missing licenses still fail.
   const modules = new Map();
   for (const target of targets) {
-    const lines = execFileSync("go", ["list", "-deps", "-f", "{{with .Module}}{{if not .Main}}{{.Path}}\\t{{.Version}}\\t{{.Dir}}{{end}}{{end}}", "./cmd/c-observer"], {
-      encoding: "utf8", env: { ...process.env, ...target, CGO_ENABLED: "0" }
+    const lines = execFileSync("go", ["list", "-deps", "-tags", "production", "-f", "{{with .Module}}{{if not .Main}}{{.Path}}\\t{{.Version}}\\t{{.Dir}}{{end}}{{end}}", entry], {
+      encoding: "utf8", env: { ...process.env, CGO_ENABLED: "0", ...target }
     });
     for (const line of lines.split("\n").filter(Boolean)) {
       const [name, version, dir] = line.split("\\t");

@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -221,13 +222,21 @@ func (c *capture) collectGlobals(ref int, nodes *int, seen map[declarationKey]bo
 	if err != nil {
 		return err
 	}
+	counts := make(map[string]int, len(vars))
+	for _, raw := range vars {
+		counts[variableName(raw)]++
+	}
 	for _, raw := range vars {
 		decl := raw.Extensions.Declaration
-		if decl == nil {
-			continue
+		var key declarationKey
+		var scope observer.VariableScope
+		reliable := decl != nil
+		if decl != nil {
+			key = declarationKey{variableName(raw), c.location(decl.Path, decl.Line, "").File, decl.Line}
+			scope = c.index.globals[key]
+		} else if counts[variableName(raw)] == 1 {
+			key, scope = c.index.uniqueGlobal(variableName(raw))
 		}
-		key := declarationKey{variableName(raw), c.location(decl.Path, decl.Line, "").File, decl.Line}
-		scope := c.index.globals[key]
 		if scope == "" || seen[key] {
 			continue
 		}
@@ -240,7 +249,9 @@ func (c *capture) collectGlobals(ref int, nodes *int, seen map[declarationKey]bo
 			return err
 		}
 		v.Scope = scope
-		markObject(&v, id)
+		if reliable {
+			markObject(&v, id)
+		}
 		seen[key] = true
 		c.result.Session.Capabilities.Globals = true
 		snapshot.Globals = append(snapshot.Globals, v)
@@ -333,8 +344,12 @@ func (c *capture) variable(raw dapVariable, id, path string, rootDeclaration *ob
 		}
 	} else if strings.Contains(raw.Type, "*") {
 		v.Kind = observer.Pointer
-		v.ChildrenComplete = raw.VariablesReference == 0
-		return v, nil
+		v.ChildrenComplete = false
+		if depth != 0 || v.Status != observer.Observed || !pointerChildrenAllowed(raw.Type, v.Value) || raw.VariablesReference == 0 {
+			return v, nil
+		}
+		// The adapter supplies these children for this stopped value. Never
+		// evaluate arbitrary expressions or read an address from the frontend.
 	} else if raw.VariablesReference != 0 {
 		v.Kind = observer.Struct
 	}
@@ -349,6 +364,9 @@ func (c *capture) variable(raw dapVariable, id, path string, rootDeclaration *ob
 		return v, nil
 	}
 	start, count := 0, *nodes
+	if v.Kind == observer.Pointer {
+		count = min(count, 16)
+	}
 	if isArray {
 		count = min(count, c.limits.MaxArrayElements)
 		if page := arrayRange(c.config.ArrayRanges, path, rootDeclaration); page != nil {
@@ -363,6 +381,10 @@ func (c *capture) variable(raw dapVariable, id, path string, rootDeclaration *ob
 	}
 	children, err := c.variables(raw.VariablesReference, start, count)
 	if err != nil {
+		var rejected dapRejectedError
+		if v.Kind == observer.Pointer && errors.As(err, &rejected) {
+			return v, nil // The address is known, the target is not readable.
+		}
 		return v, err
 	}
 	for i, child := range children {
@@ -382,6 +404,10 @@ func (c *capture) variable(raw dapVariable, id, path string, rootDeclaration *ob
 		}
 		observed, err := c.variable(child, fmt.Sprintf("%s/%d", id, i), childPath, rootDeclaration, depth+1, nodes)
 		if err != nil {
+			var rejected dapRejectedError
+			if v.Kind == observer.Pointer && errors.As(err, &rejected) {
+				return v, nil
+			}
 			return v, err
 		}
 		observed.Index = index
@@ -431,4 +457,26 @@ func validateRanges(ranges []observer.ArrayRange) error {
 		}
 	}
 	return nil
+}
+
+
+// Root only, one typed pointer level. A typedef target may have no "struct"
+// keyword in the DAP type string. Reject void, function and pointer chains.
+func pointerChildrenAllowed(typ, value string) bool {
+	t := strings.TrimSpace(typ)
+	if strings.Count(t, "*") != 1 || strings.ContainsAny(t, "()[]") {
+		return false
+	}
+	target := strings.TrimSpace(strings.SplitN(t, "*", 2)[0])
+	for _, word := range strings.Fields(target) {
+		if word == "void" {
+			return false
+		}
+	}
+	address := strings.Fields(value)
+	if len(address) == 0 || !strings.HasPrefix(address[0], "0x") {
+		return false
+	}
+	n, err := strconv.ParseUint(address[0][2:], 16, 64)
+	return err == nil && n != 0
 }

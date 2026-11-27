@@ -228,6 +228,11 @@ func (d *adapter) rememberLaunch(message dapMessage) error {
 	return nil
 }
 
+// A negative adapter response is distinct from transport failure/timeouts.
+type dapRejectedError string
+
+func (e dapRejectedError) Error() string { return string(e) }
+
 func responseError(message dapMessage) error {
 	if message.Success == nil {
 		return errors.New("LLDB response omitted the success field")
@@ -247,15 +252,15 @@ func responseError(message dapMessage) error {
 		for key, value := range details.Error.Variables {
 			description = strings.ReplaceAll(description, "{"+key+"}", value)
 		}
-		return errors.New(description)
+		return dapRejectedError(description)
 	}
 	if description := strings.TrimSpace(message.Message); description != "" {
-		return errors.New(description)
+		return dapRejectedError(description)
 	}
 	if details.Error.ID != 0 {
-		return fmt.Errorf("LLDB rejected the request (error %d)", details.Error.ID)
+		return dapRejectedError(fmt.Sprintf("LLDB rejected the request (error %d)", details.Error.ID))
 	}
-	return errors.New("LLDB rejected the request without an error message")
+	return dapRejectedError("LLDB rejected the request without an error message")
 }
 
 func (d *adapter) saveEvent(message dapMessage) error {

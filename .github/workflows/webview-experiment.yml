@@ -1,0 +1,92 @@
+name: WebView experiment (no publishing)
+on:
+  push:
+    branches: [experiment/webview]
+    paths:
+      - 'experiments/webview/**'
+      - '.github/workflows/webview-experiment.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            goos: windows
+            arch: amd64
+          - os: macos-15
+            goos: darwin
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: experiments/webview
+    env:
+      GOOS: ${{ matrix.goos }}
+      GOARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build frontend
+        working-directory: experiments/webview/frontend
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+      - name: Resolve Go dependencies
+        run: go mod tidy
+      - name: Build Windows GUI
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          go build -tags production -trimpath -ldflags "-s -w -H windowsgui" -o out/webview-probe.exe .
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-Item out/webview-probe.exe | Select-Object Name,Length
+          Compress-Archive -Path out/webview-probe.exe -DestinationPath out/webview-windows-amd64.zip
+          Get-Item out/webview-windows-amd64.zip | Select-Object Name,Length
+      - name: Build Apple Silicon app
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          CGO_ENABLED: '1'
+          MACOSX_DEPLOYMENT_TARGET: '12.0'
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          app="out/Observer WebView Probe.app"
+          mkdir -p "$app/Contents/MacOS"
+          go build -tags production -trimpath -ldflags "-s -w" -o "$app/Contents/MacOS/webview-probe" .
+          cp Info.plist "$app/Contents/Info.plist"
+          codesign --force --sign - "$app"
+          codesign --verify --strict "$app"
+          file "$app/Contents/MacOS/webview-probe"
+          du -sh "$app"
+          ditto -c -k --keepParent "$app" out/webview-macos-arm64.zip
+          ls -lh out/webview-macos-arm64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: webview-${{ matrix.goos }}-${{ matrix.arch }}
+          path: experiments/webview/out/*.zip
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dependency-locks-${{ matrix.goos }}-${{ matrix.arch }}
+          path: |
+            experiments/webview/go.mod
+            experiments/webview/go.sum
+            experiments/webview/frontend/package-lock.json
+          if-no-files-found: error

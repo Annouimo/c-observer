@@ -1,0 +1,119 @@
+name: GUI replay preview (no publishing)
+on:
+  workflow_dispatch:
+    inputs:
+      windows:
+        description: 'Additionally build Windows preview'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: gui-preview-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  prepare:
+    name: Test and prepare shared inputs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache: false
+      - name: Install, test and build frontend once
+        working-directory: gui/frontend
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci --no-audit --no-fund
+          else
+            npm install --no-audit --no-fund
+          fi
+          npm test
+          npm run build
+      - name: Resolve Go dependencies and test shared packages
+        run: |
+          go mod tidy
+          go test ./internal/... ./cmd/...
+          go vet ./internal/... ./cmd/...
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gui-build-inputs
+          path: |
+            gui/frontend/dist
+            gui/frontend/package-lock.json
+            go.mod
+            go.sum
+          if-no-files-found: error
+          retention-days: 7
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(inputs.windows && '[{"os":"macos-15","goos":"darwin","arch":"arm64"},{"os":"windows-2025","goos":"windows","arch":"amd64"}]' || '[{"os":"macos-15","goos":"darwin","arch":"arm64"}]') }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: gui
+    env:
+      GOOS: ${{ matrix.goos }}
+      GOARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: gui-build-inputs
+          path: .
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache-dependency-path: go.sum
+      - name: Build Windows GUI
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          go build -mod=readonly -tags production -trimpath -ldflags "-s -w -H windowsgui" -o out/c-observer.exe .
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-Item out/c-observer.exe | Select-Object Name,Length
+          Compress-Archive -Path out/c-observer.exe -DestinationPath out/gui-windows-amd64.zip
+          Get-Item out/gui-windows-amd64.zip | Select-Object Name,Length
+      - name: Build Apple Silicon app
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          CGO_ENABLED: '1'
+          MACOSX_DEPLOYMENT_TARGET: '12.0'
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          go test -mod=readonly -tags production .
+          go vet -mod=readonly -tags production .
+          app="out/C Observer.app"
+          mkdir -p "$app/Contents/MacOS"
+          go build -mod=readonly -tags production -trimpath -ldflags "-s -w" -o "$app/Contents/MacOS/c-observer" .
+          cp Info.plist "$app/Contents/Info.plist"
+          codesign --force --sign - "$app"
+          codesign --verify --strict "$app"
+          file "$app/Contents/MacOS/c-observer"
+          du -sh "$app"
+          ditto -c -k --keepParent "$app" out/gui-macos-arm64.zip
+          ls -lh out/gui-macos-arm64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gui-${{ matrix.goos }}-${{ matrix.arch }}
+          path: gui/out/*.zip
+          if-no-files-found: error
+          retention-days: 7

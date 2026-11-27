@@ -1,31 +1,15 @@
 # C Observer
 
-面向 C 语言课程学生的轻量、离线程序运行观察器，以执行历史和变量变化为核心。
+面向 C 语言课程学生的轻量离线程序运行观察器：替代 printf 调试，而不是替代 GDB。
 
-所属组织：[Routilet](https://github.com/Routilet) · 原始设计者：Annouimo。
+下一代 GUI 以数据为主体、时间线为全局坐标、源码为上下文。选择 C 文件和样例，运行后拖动时间线；点击数据查看变化及详情。支持取消、重跑、保存和离线回放。
 
-**状态：正式版发行准备中。** `cmd/c-observer` 提供独立入口，主界面采用数据优先设计。
+## 安装
 
-```sh
-go run -mod=mod ./cmd/c-observer-preview -fixture testdata/snapshots/adaptive-array.json
-go run -mod=mod ./cmd/c-observer-preview -live
-```
+GUI 预发行目标 0.2.0-beta.1。以 [Releases](https://github.com/Routilet/c-observer/releases) 实际公开资产为准；未发布时请勿将开发预览当作正式发行。支持 Windows 11 x64 和 Apple Silicon Mac。下载对应 ZIP，解压打开应用。无需 Node.js；Windows 使用课程 GCC 16.2.0 / Python-enabled GDB 及系统 WebView2，macOS 使用 Clang/LLDB（APP ad-hoc 签名、未公证）。不扫描 IDE、不安装工具链。旧 0.1.2 TUI 仍为 npm latest，GUI beta 仅 next。
 
-第一条使用合成数据；第二条在已有 Clang/LLDB DAP 环境中显式运行真实 C 程序。正式入口支持 macOS LLDB、Linux GDB/LLDB、Windows x64 GDB。
+## 开发
 
-- [产品定位与 MVP](docs/product.md)
-- [前后端接口](docs/interface.md)
-- [TUI 设计规范](docs/design.md)
-- [本轮前端优化计划](docs/frontend-next.md)
-- [Codex 引擎开发交接](docs/engine-next.md)
-- [前端预览与按键说明](internal/tui/README.md)
-- [Companion 调用协议](docs/integration.md)
-- [发行准备](docs/release.md)
-- [协作约定](AGENTS.md)
-- [MIT License](LICENSE)
+Go / Wails v3 / Svelte / TypeScript。正式 GUI 入口 gui/，旧 cmd/c-observer TUI 暂保留、不进入新版分发。参见 [开发预览](gui/README.md)、[设计规范](docs/design.md)、[接口](docs/interface.md)、[Companion 协议](docs/integration.md)、[发行流程](docs/release.md)、[路线图](docs/roadmap.md)。
 
-Go 单模块，Bubble Tea TUI，LLDB/DAP 与 GDB/MI 观察引擎。保持独立、离线、只读，不生成解题代码；Companion 装配回放已有真实 CI 验证。考试使用以课程规定为准。
-
-## 观察记录（0.1.1）
-
-现场观察完成后，在数据页或结果页按 **W**，确认后将完整 JSON 记录保存到用户主目录。界面显示文件位置；记录含源码、输入输出、快照及本地路径，分享前检查敏感内容。使用 `c-observer --replay <文件路径>` 离线打开记录，不需要编译器或调试器。Windows 使用对应的 c-observer.exe。R 在离线模式只重置回放，无法重新采集。参见 [记录格式](https://github.com/Routilet/c-observer/blob/main/docs/record-format.md)。
+Routilet · Annouimo · MIT License。考试使用遵循课程规定。

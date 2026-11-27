@@ -1,13 +1,21 @@
 # Agent collaboration
 
-## Scope and ownership
-- Product owner: Annouimo. Product decisions are reviewed by the owner.
-- Codex / `feat/engine`: `internal/engine/**`, real debugger integration, toolchain discovery, capture, process lifecycle, platform tests and real C fixtures in `testdata/programs/**`.
-- ChatGPT / `feat/tui`: `internal/tui/**`, replay, visualization, navigation, fixture-driven UI tests, `testdata/snapshots/**`, UI design.
-- Shared: `internal/observer/**`, `cmd/c-observer/**`, `go.mod`, docs/interface.md, fixture schema. Changes to shared contracts require both sides to review; coordinate dependencies and entrypoint changes before merging.
-- Do not change the other side's owned files without coordination. No remote execution service or AI features. Never modify Companion as part of this repo without separate approval.
+Product owner: Annouimo. Product decisions require owner review. Read docs/product.md, docs/design.md, docs/frontend-next.md and docs/roadmap.md before changing code. Next generation: printf-first Web GUI, not a simplified professional debugger.
 
-## Current phase and workflow
-Current phase: 0.1.2 integration and product acceptance. Read [docs/engine-next.md](docs/engine-next.md) and [docs/frontend-next.md](docs/frontend-next.md). Limit work to verified improvements and release-blocking regressions; do not reopen deferred research without a concrete usage problem and owner approval. The reviewed blocking Engine.Run contract remains the baseline. Reconcile the tested local integration with remote branches before starting short-lived feature branches; preserve unmerged work. Record agreed interface changes in docs/interface.md and update models, fixtures and tests together. Use separate small PRs to main. No force-push or deletion of unrelated work.
-Before a PR: gofmt, go test ./..., go vet ./...; state what platforms were actually run, and what is only simulated or cross-built. UI fixtures are synthetic and must never be represented as real captures.
-Read docs/product.md, docs/interface.md, docs/design.md and docs/roadmap.md before implementation. Prefer simple Go interfaces, avoid speculative abstractions and unnecessary dependencies.
+## Scope
+
+- Frontend: Svelte/TypeScript, single-view data-first replay, stable data layout, draggable timeline, change indexing, fixture tests.
+- Engine: internal/engine/**; preserve existing engine until GUI acceptance, then simplify from measured needs.
+- Shared: internal/observer/**, session protocol, entrypoint, record format; coordinate contract changes. Existing docs/interface.md is the legacy/current engine contract until explicitly revised.
+- Windows course GCC 16.2.0 installer and PATH configuration are the accepted environment baseline. Do not research legacy Dev-C++ or alternative toolchains, add IDE discovery, expand target platforms or build compatibility infrastructure without a concrete baseline failure and owner approval.
+- No remote execution service, AI features, code generation or changes to Companion without separate approval.
+
+## Workflow
+
+Work on the independent refactor branch, no force-push or deletion of unrelated work. Keep main and VERSION unchanged until owner-approved release. Phase 1 accepted; Phase 2 integrates existing engine through an application controller, shares record/backend code and unifies Go module. Keep engine behavior, stable protocol, old TUI and publishing unchanged until real workflow acceptance. Prefer small, reviewable commits. Experiment results are retained; no additional framework pre-research.
+
+Prioritize typical student programs. Use simple name matching and real snapshots; do not reconstruct control flow. Remove superseded UI and dedicated logic instead of adding auxiliary modes. Preserve source, values, observation order, missing/truncated state; avoid claims of exact assignment/iteration when not observed.
+
+Run gofmt, go test ./..., go vet ./... when Go code is changed; run frontend checks and target builds when frontend changes. Report actual test environment, CI versus native visual acceptance and any unverified work. Synthetic fixtures must be clearly labeled. Do not represent prior experiment as business GUI validation. No release without approval.
+
+GUI 主体已获维护者认可，优先交付 0.2.0-beta.1；PREVIEW_VERSION 管理 beta，VERSION 与 latest 保持 0.1.2。双平台真实测试、固定锁文件、原生安装检查仍为自动发行门槛。维护者明确授权 beta 先公开、人工业务验收后置；main 的 PREVIEW_VERSION 变更只触发 next。引擎精简和旧 TUI 删除后置。不得改 Companion 或直接推动 stable。
