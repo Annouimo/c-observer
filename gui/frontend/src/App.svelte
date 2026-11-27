@@ -9,7 +9,7 @@
   let focus=$state<{file:string;line:number;key:string}|null>(null);
   let open=$state<string[]>([]);
   let closed=$state<string[]>([]);
-  let detail=$state<number|null>(null);
+  let detail=$state<string|null>(null);
   let inspect=$state<{value:Variable;previous?:Variable;column:Column;id:number}|null>(null);
   let dialog:HTMLDialogElement;
   let menu=$state(false);
@@ -59,7 +59,7 @@
     else{closed=closed.filter(k=>k!==n.key);open=[...open,n.key];}
   }
   function tokensAt(s:Snapshot){return sourceTokens.get(s.location.file)?.[s.location.line-1]??[];}
-  function showDetail(s:Snapshot){detail=detail===s.id?null:s.id;}
+  function showDetail(s:Snapshot,key:string){const id=key+"-"+s.id;detail=detail===id?null:id;}
 </script>
 {#snippet code(tokens,fn)}
   <span class="code">{#each tokens as t}{#if t.kind==="identifier"&&selectable(t.text)}<button class="token" class:selected={columns.some(c=>c.name===t.text&&(!c.fn||c.fn===fn))} onclick={()=>choose(t.text,fn)} title="添加或移除观察列">{t.text}</button>{:else}<span class={t.kind}>{t.text}</span>{/if}{/each}</span>
@@ -69,8 +69,8 @@
     <td class="value">{#each values(s,c) as v}<CompactValue value={v} previous={previousValue(doc.run,s,c)} slots={layouts.get(columnKey(c))??[]} onInspect={()=>inspectValue(s,c,v)}/>{:else}<span class="muted" title="当前记录无对应值">—</span>{/each}</td>
   {/each}
 {/snippet}
-{#snippet state(s)}
-  {#if detail===s.id}
+{#snippet state(s,key)}
+  {#if detail===key+"-"+s.id}
     <tr><td colspan={3+columns.length}><div class="detail">
       <strong>观察 #{s.id+1} · 暂停状态</strong>
       {#each [{name:"当前帧",vars:s.frames[0]?.variables??[]},{name:"全局/静态",vars:s.globals??[]}] as g}
@@ -84,22 +84,22 @@
 {/snippet}
 {#snippet snapshot(s,indent,context,loopLine)}
   <tr class="observed">
-    <td class="seq"><button class="plain" title="展开完整状态" onclick={()=>showDetail(s)}>{s.id+1}</button></td>
+    <td class="seq"><button class="plain" title="展开完整状态" onclick={()=>showDetail(s,"obs")}>{s.id+1}</button></td>
     <td class="gutter"><button class="line" title="查看本行全部观察" onclick={()=>selectLine(s.location,"obs-"+s.id)}>{s.location.line||"—"}</button></td>
     <td class="source-cell"><div class="code-line" style:padding-left={indent*12+"px"}>{#if context}<small class="context">{s.location.function??""} {s.location.file.split(/[\\/]/).at(-1)??""}</small>{/if}{#if loopLine===s.location.line}<span class="muted" title={tokensAt(s).map(t=>t.text).join("")}>↳ 循环头观察</span>{:else if tokensAt(s).length}{@render code(tokensAt(s),s.location.function)}{:else}<span class="muted">{s.location.reported_file??"无可映射源码"}</span>{/if}</div></td>
     {@render data(s)}
   </tr>
-  {@render state(s)}
+  {@render state(s,"obs")}
   {@render lineQuery("obs-"+s.id)}
 {/snippet}
 {#snippet lineQuery(key)}
   {#if focus?.key===key}
     <tr class="query"><td colspan={3+columns.length}><span>{focus.line} 行 · {matching.length} 次观察</span> <button class="plain" onclick={()=>focus=null}>关闭 ×</button>{#if !matching.length}<small> · 无观察记录，不代表未执行</small>{/if}</td></tr>
-    {#each matching as q}<tr class="query"><td class="seq"><button class="plain" onclick={()=>showDetail(q)}>{q.id+1}</button></td><td class="gutter">{q.location.line}</td><td class="muted">本行观察 · #{q.id+1}</td>{@render data(q)}</tr>{@render state(q)}{/each}
+    {#each matching as q}<tr class="query"><td class="seq"><button class="plain" onclick={()=>showDetail(q,"query")}>{q.id+1}</button></td><td class="gutter">{q.location.line}</td><td class="muted">本行观察 · #{q.id+1}</td>{@render data(q)}</tr>{@render state(q,"query")}{/each}
   {/if}
 {/snippet}
 {#snippet summary(n)}
-  {#each columns as c}<td class="summary">{@const ds=groupDifferences(doc.run,n,c,2)}{@const first=flatten(n.children)[0]}{#if ds.length}{#each ds as d}<span>{d.path} {d.before} → {d.after}</span>{/each}{:else if first}{@const v=values(first,c)}{#if v.length===1&&!v[0].children?.length&&v[0].status==="observed"}<span class="muted" title="组首观察值">{label(v[0])}</span>{/if}{/if}</td>{/each}
+  {#each columns as c}{@const ds=groupDifferences(doc.run,n,c,2)}{@const first=flatten(n.children)[0]}<td class="summary">{#if ds.length}{#each ds as d}<span>{d.path} {d.before} → {d.after}</span>{/each}{:else if first}{@const v=values(first,c)}{#if v.length===1&&!v[0].children?.length&&v[0].status==="observed"}<span class="muted" title="组首观察值">{label(v[0])}</span>{/if}{/if}</td>{/each}
 {/snippet}
 {#snippet group(n,indent)}
   <tr class="group">
@@ -150,12 +150,12 @@
               {@const loop=r.nodes.find(n=>n.kind==="group"&&n.groupType==="loop")}
               {@const direct=r.nodes.length>0&&r.nodes[0].kind==="observation"?r.nodes[0].snapshot:undefined}
               <tr class:static-row={!direct} class:loop-head={!!loop}>
-                <td class="seq">{#if direct}<button class="plain" title="展开完整状态" onclick={()=>showDetail(direct)}>{direct.id+1}</button>{/if}</td>
+                <td class="seq">{#if direct}<button class="plain" title="展开完整状态" onclick={()=>showDetail(direct,"src")}>{direct.id+1}</button>{/if}</td>
                 <td class="gutter"><button class="line" title={r.count+" 次观察"} onclick={()=>selectLine({file:selectedPath,line:r.line},"src-"+r.line)}>{r.line}</button></td>
                 <td class="source-cell"><div class="code-line">{#if loop&&loop.kind==="group"}<button class="fold" onclick={()=>toggleGroup(loop)} aria-expanded={expanded(loop)} title="展开或折叠循环">{expanded(loop)?"▾":"▸"}</button>{:else}<span class="fold-space"></span>{/if}{@render code(r.tokens,r.fn)}{#if loop&&loop.kind==="group"}<small class="count">{loop.label}</small>{:else if r.count>1}<button class="count" onclick={()=>selectLine({file:selectedPath,line:r.line},"src-"+r.line)}>{r.count} 次</button>{/if}</div></td>
                 {#if direct}{@render data(direct)}{:else if loop&&loop.kind==="group"}{@render summary(loop)}{:else}{#each columns as _}<td></td>{/each}{/if}
               </tr>
-              {#if direct}{@render state(direct)}{/if}
+              {#if direct}{@render state(direct,"src")}{/if}
               {@render lineQuery("src-"+r.line)}
               {#each r.nodes as n}
                 {#if n===loop&&n.kind==="group"}
