@@ -7,6 +7,11 @@ on:
       - 'testdata/snapshots/**'
       - '.github/workflows/gui-preview.yml'
   workflow_dispatch:
+    inputs:
+      windows:
+        description: 'Additionally build Windows preview'
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -56,13 +61,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: windows-2025
-            goos: windows
-            arch: amd64
-          - os: macos-15
-            goos: darwin
-            arch: arm64
+        include: ${{ fromJSON(inputs.windows && '[{"os":"macos-15","goos":"darwin","arch":"arm64"},{"os":"windows-2025","goos":"windows","arch":"amd64"}]' || '[{"os":"macos-15","goos":"darwin","arch":"arm64"}]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     defaults:

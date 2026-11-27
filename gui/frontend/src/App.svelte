@@ -2,13 +2,17 @@
   import example from "../../../testdata/snapshots/wrong-index.json";
   import DataValue from "./DataValue.svelte";
   import CompactValue from "./CompactValue.svelte";
-  import { parseDocument, tokenize, groupTrace, sourceDocument, groupDifferences, replacedLines, smallLayout, flatten, label, values, previousValue, columnKey, columnLabel, outputText, MAX_BYTES, type Column, type Location, type Snapshot, type Variable, type TraceNode } from "./observation";
+  import { parseDocument, tokenize, groupTrace, sourceDocument, groupDifferences, replacedLines, smallLayout, projectRounds, slotSummary, slotHeaders, flatten, label, values, previousValue, columnKey, columnLabel, outputText, MAX_BYTES, type Column, type Location, type Snapshot, type Variable, type TraceNode, type GroupNode } from "./observation";
   let doc=$state(parseDocument(example));
   let mode=$state<"source"|"trace"|"io">("source");
   let columns=$state<Column[]>([{name:"i",fn:"main"},{name:"index",fn:"main"},{name:"x",fn:"main"},{name:"a",fn:"main"}]);
   let focus=$state<{file:string;line:number;key:string}|null>(null);
   let open=$state<string[]>([]);
   let closed=$state<string[]>([]);
+  let rounds=$state<Record<string,number>>({});
+  let fullLoops=$state<string[]>([]);
+  let sourceWidth=$state(520);
+  let drag:{x:number;width:number}|null=null;
   let detail=$state<string|null>(null);
   let inspect=$state<{value:Variable;previous?:Variable;column:Column;id:number}|null>(null);
   let dialog:HTMLDialogElement;
@@ -17,9 +21,15 @@
   let selectedPath=$state(example.run.session.sources[0]?.path??"");
   let sourceTokens=$derived(new Map(doc.run.session.sources.map(s=>[s.path,tokenize(s.text)])));
   let tree=$derived(groupTrace(doc.run));
-  let document=$derived(sourceDocument(doc.run,selectedPath,tree));
-  let hidden=$derived(replacedLines(document.rows,expanded));
+  let projection=$derived(projectRounds(tree,rounds,fullLoops));
+  let document=$derived(sourceDocument(doc.run,selectedPath,projection.nodes));
+  let hidden=$derived(replacedLines(document.rows,n=>fullLoops.includes(n.key)&&expanded(n)));
   let layouts=$derived(new Map(columns.map(c=>[columnKey(c),smallLayout(doc.run.snapshots.flatMap(s=>values(s,c)))])));
+  let widths=$derived(columns.map(c=>{
+    const slots=layouts.get(columnKey(c))??[];
+    return slots.length?Math.max(92,slots.length*72):Math.max(92,Math.min(290,columnLabel(c).length*9+38),doc.run.snapshots.some(s=>values(s,c).some(v=>v.children?.length))?250:0);
+  }));
+  let tableWidth=$derived(75+sourceWidth+widths.reduce((a,b)=>a+b,0));
   let names=$derived([...new Map<string,Column>(doc.run.snapshots.flatMap(s=>[
     ...(s.frames[0]?.variables??[]).map(v=>({name:v.name,fn:s.frames[0]?.location.function??s.location.function})),
     ...(s.globals??[]).map(v=>({name:v.name,global:true}))
@@ -36,7 +46,7 @@
       if(file.size>MAX_BYTES)throw Error("文件超过 128 MiB");
       const next=parseDocument(JSON.parse(await file.text()));
       outputText(next.run.output.stdout);outputText(next.run.output.stderr);
-      doc=next;columns=[];open=[];closed=[];detail=null;focus=null;inspect=null;selectedColumn="";
+      doc=next;columns=[];open=[];closed=[];rounds={};fullLoops=[];detail=null;focus=null;inspect=null;selectedColumn="";
       selectedPath=next.run.session.sources[0]?.path??"";mode="source";error="";
     }catch(e){error=e instanceof Error?e.message:String(e);}
     input.value="";
@@ -58,6 +68,19 @@
     if(expanded(n)){open=open.filter(k=>k!==n.key);closed=[...closed,n.key];}
     else{closed=closed.filter(k=>k!==n.key);open=[...open,n.key];}
   }
+  function stepRound(n:GroupNode,delta:number){
+    rounds={...rounds,[n.key]:Math.max(0,Math.min(n.children.length-1,(rounds[n.key]??0)+delta))};
+    focus=null;detail=null;
+  }
+  function toggleFull(n:GroupNode){
+    if(fullLoops.includes(n.key))fullLoops=fullLoops.filter(k=>k!==n.key);
+    else {fullLoops=[...fullLoops,n.key];closed=closed.filter(k=>k!==n.key);}
+    focus=null;detail=null;
+  }
+  function resize(width:number){sourceWidth=Math.max(240,Math.min(1000,width));}
+  function startResize(e:PointerEvent){drag={x:e.clientX,width:sourceWidth};(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);}
+  function moveResize(e:PointerEvent){if(drag)resize(drag.width+e.clientX-drag.x);}
+  function stopResize(){drag=null;}
   function tokensAt(s:Snapshot){return sourceTokens.get(s.location.file)?.[s.location.line-1]??[];}
   function showDetail(s:Snapshot,key:string){const id=key+"-"+s.id;detail=detail===id?null:id;}
 </script>
@@ -99,12 +122,12 @@
   {/if}
 {/snippet}
 {#snippet summary(n)}
-  {#each columns as c}{@const ds=groupDifferences(doc.run,n,c,2)}{@const first=flatten(n.children)[0]}<td class="summary">{#if ds.length}{#each ds as d}<span>{d.path} {d.before} → {d.after}</span>{/each}{:else if first}{@const v=values(first,c)}{#if v.length===1&&!v[0].children?.length&&v[0].status==="observed"}<span class="muted" title="组首观察值">{label(v[0])}</span>{/if}{/if}</td>{/each}
+  {#each columns as c}{@const ds=groupDifferences(doc.run,n,c,2)}{@const first=flatten(n.children)[0]}{@const slots=layouts.get(columnKey(c))??[]}<td class="summary value">{#if slots.length}<div class="slot-summary" style:grid-template-columns={"repeat("+slots.length+",minmax(40px,1fr))"}>{#each slots as slot}{@const v=slotSummary(doc.run,n,c,slot)}<span class:diff={v.changed} title={v.title}>{v.text}</span>{/each}</div>{:else}{#if ds.length}{#each ds as d}<span>{d.path} {d.before} → {d.after}</span>{/each}{:else if first}{@const v=values(first,c)}{#if v.length===1&&!v[0].children?.length&&v[0].status==="observed"}<span class="muted" title="组首观察值">{label(v[0])}</span>{/if}{/if}{/if}</td>{/each}
 {/snippet}
 {#snippet group(n,indent)}
   <tr class="group">
     <td class="seq"></td><td class="gutter"></td>
-    <td><button class="group-button" style:padding-left={indent*12+"px"} onclick={()=>toggleGroup(n)} aria-expanded={expanded(n)}>{expanded(n)?"▾":"▸"} {n.label}</button></td>
+    <td class="source-cell"><button class="group-button" style:padding-left={indent*12+"px"} onclick={()=>toggleGroup(n)} aria-expanded={expanded(n)}>{expanded(n)?"▾":"▸"} {n.label}</button></td>
     {@render summary(n)}
   </tr>
   {#if expanded(n)}
@@ -127,18 +150,19 @@
 {#if error}<div role="alert" class="error">{error}</div>{/if}
 {#if mode!=="io"}
   <div class="controls">
-    {#if mode==="source"}<select aria-label="源码文件" bind:value={selectedPath} onchange={()=>focus=null}>{#each doc.run.session.sources as s}<option value={s.path}>{s.path.split(/[\\/]/).at(-1)}</option>{/each}</select>{/if}
+    {#if mode==="source"&&doc.run.session.sources.length===1}<span class="filename">{selectedPath.split(/[\\/]/).at(-1)}</span>{:else if mode==="source"}<select aria-label="源码文件" bind:value={selectedPath} onchange={()=>focus=null}>{#each doc.run.session.sources as s}<option value={s.path}>{s.path.split(/[\\/]/).at(-1)}</option>{/each}</select>{/if}
     <select aria-label="添加变量" bind:value={selectedColumn} onchange={()=>{const c=names.find(c=>columnKey(c)===selectedColumn);if(c)add(c);selectedColumn="";}}>
       <option value="">+ 观察变量</option>{#each names as c}<option value={columnKey(c)}>{c.fn?c.fn+"::":c.global?"全局::":""}{c.name}</option>{/each}
     </select>
     
     <span class="spacer"></span>
-    {#if mode==="source"}<div class="menu"><button onclick={()=>menu=!menu} aria-expanded={menu} title="分组操作">⋯</button>{#if menu}<div class="menu-items"><button onclick={()=>{open=[];closed=allGroupKeys(tree);menu=false;focus=null;}}>折叠全部</button><button onclick={()=>{open=[];closed=[];menu=false;focus=null;}}>恢复默认</button></div>{/if}</div>{/if}
+    {#if mode==="source"}<div class="menu"><button onclick={()=>menu=!menu} aria-expanded={menu} title="分组操作">⋯</button>{#if menu}<div class="menu-items"><button onclick={()=>{fullLoops=[];open=[];closed=allGroupKeys(tree);menu=false;focus=null;}}>返回逐组观察</button><button onclick={()=>{fullLoops=[];rounds={};open=[];closed=[];menu=false;focus=null;}}>恢复默认</button></div>{/if}</div>{/if}
   </div>
   <main class="scroll">
-    <table class="trace">
-      <thead><tr><th class="seq">#</th><th class="gutter">行</th><th class="source-cell">源码</th>
-        {#each columns as c (columnKey(c))}<th class="value" title={c.fn??(c.global?"全局":"按名称")}>{columnLabel(c)} <button class="plain remove" title="移除观察列" onclick={()=>toggle(c)}>×</button>{#if layouts.get(columnKey(c))?.length}<div class="slot-head" style:grid-template-columns={"repeat("+layouts.get(columnKey(c))!.length+",minmax(40px,1fr))"}>{#each layouts.get(columnKey(c))??[] as slot}<span title={slot.label}>{slot.label}</span>{/each}</div>{/if}</th>{/each}
+    <table class="trace" style:width={tableWidth+"px"} style:--source-width={sourceWidth+"px"}>
+      <colgroup><col style:width="37px"/><col style:width="38px"/><col style:width={sourceWidth+"px"}/>{#each widths as w}<col style:width={w+"px"}/>{/each}</colgroup>
+      <thead><tr><th class="seq">#</th><th class="gutter">行</th><th class="source-cell">源码<button class="resize" aria-label="调整源码列宽度" title="拖动调整源码宽度，也可用左右方向键" onpointerdown={startResize} onpointermove={moveResize} onpointerup={stopResize} onpointercancel={stopResize} onlostpointercapture={stopResize} onkeydown={(e)=>{if(e.key==="ArrowLeft"||e.key==="ArrowRight"){e.preventDefault();resize(sourceWidth+(e.key==="ArrowLeft"?-24:24));}}}></button></th>
+        {#each columns as c (columnKey(c))}{@const heads=slotHeaders(layouts.get(columnKey(c))??[])}<th class="value" title={c.fn??(c.global?"全局":"按名称")}>{columnLabel(c)+heads.suffix} <button class="plain remove" title="移除观察列" onclick={()=>toggle(c)}>×</button>{#if layouts.get(columnKey(c))?.length}<div class="slot-head" style:grid-template-columns={"repeat("+layouts.get(columnKey(c))!.length+",minmax(40px,1fr))"}>{#each heads.labels as title}<span {title}>{title}</span>{/each}</div>{/if}</th>{/each}
       </tr></thead>
       <tbody>
         {#if mode==="trace"}
@@ -147,18 +171,34 @@
         {:else}
           {#each document.rows as r}
             {#if !hidden.has(r.line)}
-              {@const loop=r.nodes.find(n=>n.kind==="group"&&n.groupType==="loop")}
-              {@const direct=r.nodes.length>0&&r.nodes[0].kind==="observation"?r.nodes[0].snapshot:undefined}
+              {@const loops=projection.loops.filter(n=>n.anchor.file===selectedPath&&n.anchor.line===r.line)}
+              {@const loop=loops[0]}
+              {@const direct=r.nodes.find(n=>n.kind==="observation")?.snapshot}
               <tr class:static-row={!direct} class:loop-head={!!loop}>
                 <td class="seq">{#if direct}<button class="plain" title="展开完整状态" onclick={()=>showDetail(direct,"src")}>{direct.id+1}</button>{/if}</td>
                 <td class="gutter"><button class="line" title={r.count+" 次观察"} onclick={()=>selectLine({file:selectedPath,line:r.line},"src-"+r.line)}>{r.line}</button></td>
-                <td class="source-cell"><div class="code-line">{#if loop&&loop.kind==="group"}<button class="fold" onclick={()=>toggleGroup(loop)} aria-expanded={expanded(loop)} title="展开或折叠循环">{expanded(loop)?"▾":"▸"}</button>{:else}<span class="fold-space"></span>{/if}{@render code(r.tokens,r.fn)}{#if loop&&loop.kind==="group"}<small class="count">{loop.label}</small>{:else if r.count>1}<button class="count" onclick={()=>selectLine({file:selectedPath,line:r.line},"src-"+r.line)}>{r.count} 次</button>{/if}</div></td>
-                {#if direct}{@render data(direct)}{:else if loop&&loop.kind==="group"}{@render summary(loop)}{:else}{#each columns as _}<td></td>{/each}{/if}
+                <td class="source-cell"><div class="code-line"><span class="fold-space"></span>{@render code(r.tokens,r.fn)}</div>
+                  {#each loops as lp}
+                    <div class="round-controls">
+                      {#if loops.length>1}<small>片段 #{flatten(lp.children)[0]?.id+1}</small>{/if}
+                      {#if !fullLoops.includes(lp.key)}
+                        <button class="round-arrow" disabled={(rounds[lp.key]??0)===0} onclick={()=>stepRound(lp,-1)} aria-label="上一组">‹</button>
+                        <select class="round-select" aria-label="选择观察组" value={rounds[lp.key]??0} onchange={(e)=>{rounds={...rounds,[lp.key]:Number(e.currentTarget.value)};focus=null;detail=null;}}>
+                          {#each lp.children as _,i}<option value={i}>第 {i+1} / {lp.children.length} 组</option>{/each}
+                        </select>
+                        <button class="round-arrow" disabled={(rounds[lp.key]??0)>=lp.children.length-1} onclick={()=>stepRound(lp,1)} aria-label="下一组">›</button>
+                      {/if}
+                      <button class="round-all" onclick={()=>toggleFull(lp)}>{fullLoops.includes(lp.key)?"逐组":"展开全部"}</button>
+                    </div>
+                  {/each}
+                  {#if !loops.length&&r.nodes.length>1}<button class="count" onclick={()=>selectLine({file:selectedPath,line:r.line},"src-"+r.line)}>{r.count} 次</button>{/if}
+                </td>
+                {#if direct}{@render data(direct)}{:else if loop&&fullLoops.includes(loop.key)}{@render summary(loop)}{:else}{#each columns as _}<td class="value"></td>{/each}{/if}
               </tr>
               {#if direct}{@render state(direct,"src")}{/if}
               {@render lineQuery("src-"+r.line)}
               {#each r.nodes as n}
-                {#if n===loop&&n.kind==="group"}
+                {#if n.kind==="group"&&n.groupType==="loop"&&fullLoops.includes(n.key)}
                   {#if expanded(n)}{#each n.children as child}{#if child.kind==="group"}{@render group(child,1)}{:else}{@render snapshot(child.snapshot,1,false,0)}{/if}{/each}{/if}
                 {:else if n.kind==="group"}{@render group(n,1)}
                 {:else if n.snapshot.id!==direct?.id}{@render snapshot(n.snapshot,1,false,0)}{/if}
@@ -186,7 +226,7 @@
 <dialog bind:this={dialog} onclose={()=>inspect=null}>
   {#if inspect}<div class="dialog-head"><strong>{columnLabel(inspect.column)}</strong><small>观察 #{inspect.id+1} · {inspect.value.type}</small><span class="spacer"></span><button onclick={()=>dialog.close()} aria-label="关闭详情">×</button></div><div class="dialog-content"><DataValue value={inspect.value} previous={inspect.previous} column={inspect.column} onSelect={add}/></div><div class="dialog-foot">点击成员旁的 + 添加观察列。</div>{/if}
 </dialog>
-<footer title="数值是实际暂停观察，蓝色为相邻原始观察的差异，不是赋值归因；分组仅为阅读提示。">暂停观察 · 空白：无附着记录 · —：无对应值 · 蓝色：观察值变化 {doc.synthetic?" · 合成记录":""}</footer>
+<footer title="数值是实际暂停观察，蓝色为相邻原始观察的差异，不是赋值归因；分组仅为阅读提示。">暂停观察 · 空白：本组无记录 · ?：未采集 · —：无对应值 · 蓝色：观察值变化 {doc.synthetic?" · 合成记录":""}</footer>
 <style>
   :global(*){box-sizing:border-box}
   :global(body){margin:0;font:13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text);background:var(--bg);--bg:#f7f8fa;--panel:#fff;--text:#20242b;--muted:#697484;--line:#e2e6ec;--accent:#245ab6;--soft:#eaf1ff;color-scheme:light}
@@ -199,12 +239,12 @@
   .file input{position:absolute;width:1px;height:1px;opacity:0}.file:focus-within{outline:2px solid var(--accent)}
   .active,.selected{background:var(--soft);color:var(--accent)}
   .scroll{flex:1;min-height:0;overflow:auto;background:var(--panel)}
-  .trace{border-collapse:separate;border-spacing:0;width:max-content;min-width:min(100%,900px);background:var(--panel)}
+  .trace{border-collapse:separate;border-spacing:0;table-layout:fixed;background:var(--panel)}
   .trace th,.trace td{padding:3px 8px;text-align:left;vertical-align:top;height:26px}
   .trace th{position:sticky;top:0;background:var(--bg);z-index:2;white-space:nowrap;font-weight:600}
   .seq{min-width:37px;width:37px;color:var(--muted);text-align:right!important;font-variant-numeric:tabular-nums}
   .gutter{min-width:38px;width:38px;text-align:right!important}
-  .source-cell{min-width:270px;max-width:720px}
+  .source-cell{width:var(--source-width);overflow-wrap:anywhere}
   .code-line{white-space:pre-wrap;overflow-wrap:anywhere}
   .code{font:13px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;tab-size:4}
   .token,.line,.plain,.count{border:0;background:transparent;padding:0;font:inherit;color:var(--accent);border-radius:2px}
@@ -215,7 +255,7 @@
   .keyword{color:var(--accent);font-weight:600}.comment,.literal{color:var(--muted)}
   .context{display:inline-block;margin-right:8px;font:11px system-ui}
   .static-row .source-cell{color:var(--text)}
-  .value{min-width:72px;max-width:440px;border-left:1px solid var(--line);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+  .value{border-left:1px solid var(--line);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
   .group td{background:var(--bg);padding-top:3px;padding-bottom:3px}.group td:nth-child(3){border-left:2px solid var(--line)}
   .group-button{width:100%;text-align:left;border:0;background:none;font-weight:600;color:var(--accent);padding:0;white-space:normal}
   .summary{color:var(--accent);font-size:12px;max-width:420px}.summary span{display:inline-block;margin-right:6px}
@@ -239,4 +279,23 @@
   .dialog-head,.dialog-foot{display:flex;gap:8px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line)}
   .dialog-content{padding:12px;overflow:auto;max-height:55vh}
   .dialog-foot{border-bottom:0;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+
+  .filename{font-weight:500;padding:2px 5px}
+  .trace .seq,.trace .gutter,.trace .source-cell{position:sticky;background:var(--panel);z-index:1}
+  .trace .seq{left:0}.trace .gutter{left:37px}.trace .source-cell{left:75px;box-shadow:1px 0 var(--line)}
+  .trace th.seq,.trace th.gutter,.trace th.source-cell{z-index:4;background:var(--bg)}
+  .trace th.value{z-index:2}
+  .trace tr:hover td.seq,.trace tr:hover td.gutter,.trace tr:hover td.source-cell{background:var(--bg)}
+  .trace .group td.seq,.trace .group td.gutter,.trace .group td.source-cell{background:var(--bg)}
+  .trace .value{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+  .resize{position:absolute;right:0;top:0;bottom:0;width:7px;border:0;border-radius:0;padding:0;background:transparent;cursor:col-resize;touch-action:none}
+  .resize:hover,.resize:focus-visible{background:var(--accent)}
+  .round-controls{display:flex;align-items:center;gap:4px;margin-left:16px;min-height:24px;white-space:nowrap}
+  .round-arrow,.round-all,.round-select{padding:1px 5px;font-size:12px;color:var(--accent)}
+  .round-arrow:disabled{opacity:.35;cursor:default}.round-select{max-width:135px}
+  .slot-summary{display:grid;width:100%;gap:0;font-variant-numeric:tabular-nums}
+  .slot-summary span{margin:0;padding:0 3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;border-right:1px solid var(--line);color:var(--muted)}
+  .slot-summary span:last-child{border:0}.slot-summary .diff{color:var(--accent);background:var(--soft);font-weight:600}
+  .slot-head span{overflow:hidden;text-overflow:ellipsis}
+  .trace td.value{overflow:hidden}
 </style>

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { parseDocument, tokenize, groupTrace, flatten, values, changed, label, valueChanged, sourceDocument, differences, memberColumns, groupDifferences, loopRanges, replacedLines, smallLayout, atPath, type Run } from "./observation.ts";
+import { parseDocument, tokenize, groupTrace, flatten, values, changed, label, valueChanged, sourceDocument, differences, memberColumns, groupDifferences, loopRanges, replacedLines, smallLayout, atPath, projectRounds, slotSummary, slotHeaders, type Run } from "./observation.ts";
 const fixture=JSON.parse(readFileSync(new URL("../../../testdata/snapshots/wrong-index.json",import.meta.url),"utf8"));
 test("fixture is explicitly synthetic and preserves observed values",()=>{
   const doc=parseDocument(fixture);
@@ -108,4 +108,36 @@ test("group summary excludes changes entering the group",()=>{
   assert.ok(loop&&loop.kind==="group");
   assert.deepEqual(groupDifferences(run,loop.children[1],{name:"i",fn:"main"}),[]);
   assert.equal(groupDifferences(run,loop.children[1],{name:"a",fn:"main"})[0].path,"[1].score");
+});
+
+test("round selection keeps source rows stable and does not copy values from other groups",()=>{
+  const {run}=parseDocument(fixture),tree=groupTrace(run);
+  const first=projectRounds(tree,{},[]);
+  const loop=first.loops[0];
+  assert.ok(loop);
+  assert.deepEqual(flatten(first.nodes).map(s=>s.id),[0,1,2,6]);
+  const second=projectRounds(tree,{[loop.key]:1},[]);
+  assert.deepEqual(flatten(second.nodes).map(s=>s.id),[3,4,5,6]);
+  const a=sourceDocument(run,"main.c",first.nodes),b=sourceDocument(run,"main.c",second.nodes);
+  assert.deepEqual(a.rows.map(r=>r.line),b.rows.map(r=>r.line));
+  assert.equal(a.rows[7].nodes[0].kind,"observation");
+  assert.equal(b.rows[7].nodes[0].kind,"observation");
+  assert.deepEqual(flatten(projectRounds(tree,{},[loop.key]).nodes),run.snapshots);
+});
+test("nested loop selectors belong only to the selected outer group",()=>{
+  const {run}=parseDocument(fixture);
+  const obs=(id:number)=>({kind:"observation" as const,snapshot:run.snapshots[id]});
+  const anchor=run.snapshots[0].location;
+  const group=(key:string,groupType:"loop"|"round",children:any[])=>({kind:"group" as const,key,groupType,anchor,label:key,children});
+  const inner=group("inner","loop",[group("i0","round",[obs(0)]),group("i1","round",[obs(1)])]);
+  const outer=group("outer","loop",[group("o0","round",[inner]),group("o1","round",[obs(2)])]);
+  assert.deepEqual(flatten(projectRounds([outer],{inner:1},[]).nodes).map(s=>s.id),[1]);
+  assert.deepEqual(projectRounds([outer],{outer:1},[]).loops.map(n=>n.key),["outer"]);
+});
+test("fixed array summary follows slot coordinates, including missing indices",()=>{
+  const {run}=parseDocument(fixture),c={name:"a",fn:"main"};
+  const loop=projectRounds(groupTrace(run),{},[]).loops[0];
+  const slots=smallLayout(run.snapshots.flatMap(s=>values(s,c)));
+  assert.deepEqual(slotHeaders(slots),{suffix:"[].score",labels:["[0]","[1]","[2]","[3]"]});
+  assert.deepEqual(slots.map(slot=>slotSummary(run,loop,c,slot).text),["10 → 17","20 → 25","30","?"]);
 });

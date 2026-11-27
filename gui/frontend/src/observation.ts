@@ -320,3 +320,43 @@ export function smallLayout(all:Variable[],limit=8):LeafSlot[] {
   const paths=walk(roots,[]);
   return paths&&paths.length<=limit?paths.filter(p=>p.length).map(path=>({path,label:path.map(memberLabel).join("")})):[];
 }
+
+// Project one recorded group per loop onto the static source. The complete
+// trace is untouched. Full mode retains the original group tree.
+export type GroupNode=Extract<TraceNode,{kind:"group"}>;
+export function projectRounds(tree:TraceNode[],selection:Record<string,number>,full:string[]):{nodes:TraceNode[];loops:GroupNode[]}{
+  const loops:GroupNode[]=[];
+  function visit(nodes:TraceNode[]):TraceNode[]{
+    const out:TraceNode[]=[];
+    for(const n of nodes){
+      if(n.kind!=="group"||n.groupType!=="loop"){out.push(n);continue;}
+      loops.push(n);
+      if(full.includes(n.key)){out.push(n);continue;}
+      const index=Math.max(0,Math.min(n.children.length-1,selection[n.key]??0));
+      const child=n.children[index];
+      if(child)out.push(...visit(child.kind==="group"?child.children:[child]));
+    }
+    return out;
+  }
+  return {nodes:visit(tree),loops};
+}
+// Report only comparable adjacent changes within this group. A single slot
+// always occupies the same data coordinate as it does on observation rows.
+export function slotSummary(run:Run,n:TraceNode,c:Column,slot:LeafSlot):{text:string;changed:boolean;title:string}{
+  if(n.kind!=="group")return {text:"",changed:false,title:""};
+  const ss=flatten(n.children);
+  const observed=ss.map(s=>{const v=values(s,c);return v.length===1?atPath(v[0],slot.path):undefined;});
+  const changes:string[]=[];
+  for(let i=1;i<ss.length;i++){
+    const before=atPath(previousValue(run,ss[i],c),slot.path),after=observed[i];
+    if(ss[i].id===ss[i-1].id+1&&after&&before&&valueChanged(before,after))changes.push(label(before)+" → "+label(after));
+  }
+  if(changes.length===1)return {text:changes[0],changed:true,title:"组内相邻观察差异："+changes[0]};
+  if(changes.length>1)return {text:changes.length+" 次变化",changed:true,title:changes.join("；")};
+  const first=observed.find(v=>v?.status==="observed"&&v.value!==undefined);
+  return {text:first?label(first):"?",changed:false,title:first?"组内首个已记录值":"未记录可用值"};
+}
+export function slotHeaders(slots:LeafSlot[]):{suffix:string;labels:string[]}{
+  const suffix=slots.length&&slots.every(s=>s.path.length===2&&s.path[0].index!==undefined&&s.path[1].index===undefined&&s.path[1].name===slots[0].path[1].name)?"[]."+slots[0].path[1].name:"";
+  return {suffix,labels:slots.map(s=>suffix?"["+s.path[0].index+"]":s.label)};
+}
