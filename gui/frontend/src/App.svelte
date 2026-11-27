@@ -1,9 +1,69 @@
 <script lang="ts">
+  import {onMount} from "svelte";
+  import {connect,call,type Initial} from "./native";
   import example from "../../../testdata/snapshots/wrong-index.json";
   import DataModule from "./DataModule.svelte";
   import Timeline from "./Timeline.svelte";
   import {parseDocument,modules,selectedValues,matchingPrevious,changeEvents,navigationTarget,replayFeedback,columnKey,columnLabel,outputText,MAX_BYTES,visibleModules,isCompound,moduleWidth,replayContext,sampleResult,outputRows,sourceTokens,samplePreview,type Column,type NavigationMode} from "./observation";
   let doc=$state(parseDocument(example));
+  let screen=$state<"starting"|"setup"|"running"|"replay">("starting");
+  let native=$state(false);
+  let live=$state(false);
+  let sessionMode=$state(false);
+  let source=$state("");
+  let stdin=$state("");
+  let expected=$state("");
+  let withExpected=$state(false);
+  let cancelling=$state(false);
+  let saving=$state(false);
+  let notice=$state("");
+  let previousScreen:"setup"|"replay"="setup";
+  function failure(e:unknown){error=e instanceof Error?e.message:String(e);}
+  function applyRecord(text:string,isLive:boolean){
+    const next=parseDocument(JSON.parse(text));
+    outputText(next.run.output.stdout);outputText(next.run.output.stderr);
+    eventCache=new Map();lastNavigation=-Infinity;pulses=new Set();motion={offset:0,duration:135,serial:motion.serial+1};
+    doc=next;step=0;selected=null;error="";notice="";live=isLive;screen="replay";
+  }
+  async function execute(method:"Run"|"RunSession"|"Rerun",...args:unknown[]){
+    if(screen==="running")return;
+    previousScreen=screen==="replay"?"replay":"setup";
+    screen="running";error="";notice="";cancelling=false;
+    try{applyRecord(await call<string>(method,...args),true);}
+    catch(e){failure(e);screen=previousScreen;}
+    finally{cancelling=false;}
+  }
+  async function cancelRun(){
+    if(cancelling)return;
+    cancelling=true;
+    try{await call<void>("Cancel");}catch(e){failure(e);cancelling=false;}
+  }
+  async function pickSource(){
+    try{const p=await call<string>("ChooseSource");if(p)source=p;}catch(e){failure(e);}
+  }
+  async function openNative(){
+    try{const text=await call<string>("OpenRecord");if(text){applyRecord(text,false);sessionMode=false;}}catch(e){failure(e);}
+  }
+  async function exportRecord(){
+    if(saving)return;saving=true;
+    try{notice="已保存："+await call<string>("Export");}catch(e){failure(e);}
+    finally{saving=false;}
+  }
+  function setup(){screen="setup";sessionMode=false;error="";notice="";}
+  onMount(async()=>{
+    native=await connect();
+    if(!native){
+      // Only Vite development may silently enter the synthetic example.
+      if(import.meta.env.DEV){screen="replay";return;}
+      error="本地应用通信初始化失败。";screen="setup";return;
+    }
+    try{
+      const init=JSON.parse(await call<string>("Initial")) as Initial;
+      source=init.Source??"";error=init.Error??"";screen="setup";
+      if(init.Mode==="session"){sessionMode=true;await execute("RunSession");}
+      else if(init.Mode==="replay")applyRecord(init.Record,false);
+    }catch(e){failure(e);screen="setup";}
+  });
   let step=$state(0);
   let motion=$state({offset:0,duration:135,serial:0});
   let lastNavigation=-Infinity;
@@ -67,7 +127,7 @@
     rawOutput=false;dialogMode=mode;sourcePath=currentSource?.path??doc.run.session.sources[0]?.path??"";dialog.showModal();
   }
   function keys(e:KeyboardEvent){
-    if(dialog?.open||e.metaKey||e.ctrlKey||e.altKey||["INPUT","SELECT","TEXTAREA"].includes((e.target as HTMLElement)?.tagName))return;
+    if(screen!=="replay"||dialog?.open||e.metaKey||e.ctrlKey||e.altKey||["INPUT","SELECT","TEXTAREA"].includes((e.target as HTMLElement)?.tagName))return;
     const n=navigationTarget(e.key,e.shiftKey,step,total,events);
     if(n!==undefined){e.preventDefault();go(n);}
   }
@@ -75,9 +135,7 @@
     const input=e.currentTarget as HTMLInputElement,file=input.files?.[0];if(!file)return;
     try{
       if(file.size>MAX_BYTES)throw Error("文件超过 128 MiB");
-      const next=parseDocument(JSON.parse(await file.text()));
-      outputText(next.run.output.stdout);outputText(next.run.output.stderr);
-      eventCache=new Map();lastNavigation=-Infinity;pulses=new Set();motion={offset:0,duration:135,serial:motion.serial+1};doc=next;step=0;selected=null;error="";
+      applyRecord(await file.text(),false);
     }catch(e){error=e instanceof Error?e.message:String(e);}
     input.value="";
   }
@@ -85,12 +143,38 @@
 <svelte:window onkeydown={keys}/>
 <header>
   <strong>C Observer</strong>
-  <label class="file">打开记录<input type="file" accept=".json,application/json" onchange={load}/></label>
+  {#if screen==="replay"}
+    {#if native}
+      {#if !sessionMode}<button onclick={setup}>新建观察</button>{/if}
+      {#if live}<button onclick={()=>execute("Rerun")}>重跑</button><button disabled={saving} onclick={exportRecord}>保存记录</button>{/if}
+      {#if !sessionMode}<button onclick={openNative}>打开记录</button>{/if}
+    {:else}<label class="file">打开记录<input type="file" accept=".json,application/json" onchange={load}/></label>{/if}
+  {/if}
   <span class="spacer"></span>
-  {#if doc.synthetic}<small>合成记录</small>{/if}
+  {#if screen==="replay"}{#if doc.synthetic}<small>合成记录</small>{:else if !live}<small>离线记录</small>{/if}{/if}
 
 </header>
 {#if error}<div class="error" role="alert">{error}</div>{/if}
+{#if notice}<div class="notice" role="status">{notice}</div>{/if}
+{#if screen==="starting"}
+  <main class="center"><span>正在启动…</span></main>
+{:else if screen==="running"}
+  <main class="center"><section class="run-card"><span class="spinner" aria-hidden="true"></span><h1>{cancelling?"正在停止并清理":"正在编译和采集"}</h1><p>{source.split(/[\\/]/).at(-1)}</p><button disabled={cancelling} onclick={cancelRun}>取消</button></section></main>
+{:else if screen==="setup"}
+  <main class="center">
+    <section class="setup-card">
+      <h1>新建观察</h1>
+      <label for="source-path">C 源文件</label>
+      <div class="source-picker"><input id="source-path" bind:value={source} placeholder="选择或输入 .c 文件路径"/><button disabled={!native} onclick={pickSource}>选择文件</button></div>
+      <div class="samples">
+        <label>输入<textarea bind:value={stdin} spellcheck={false} placeholder="可为空"></textarea></label>
+        <label><span class="expected-label"><input type="checkbox" bind:checked={withExpected}/> 预期输出</span><textarea bind:value={expected} disabled={!withExpected} spellcheck={false} placeholder="可选"></textarea></label>
+      </div>
+      <button class="primary" disabled={!native||!source.trim()} onclick={()=>execute("Run",source,stdin,withExpected,expected)}>运行观察</button>
+      <button class="quiet open-record" disabled={!native} onclick={openNative}>打开已有观察记录</button>
+    </section>
+  </main>
+{:else}
 <section class="context">
   <button class="source-context" onclick={()=>show("source")} disabled={!doc.run.session.sources.length} aria-label="查看完整源码" title="查看完整源码">
     <div class="context-head"><span title={contextTitle}>{contextTitle}</span><span class="spacer"></span><span class="expand" aria-hidden="true">↗</span></div>
@@ -155,6 +239,7 @@
     {/if}
   </div>
 </dialog>
+{/if}
 <style>
   :global(*){box-sizing:border-box}
   :global(body){margin:0;font:13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text);background:var(--bg);--bg:#f5f6f8;--panel:#fff;--text:#20242b;--muted:#626d7c;--line:#dfe3e9;--accent:#285cba;--soft:#eaf1ff;--hover:#f0f4fa;--mono:ui-monospace,SFMono-Regular,Consolas,monospace;color-scheme:light}
@@ -190,7 +275,23 @@
   .empty{color:var(--muted);padding:20px;text-align:center}
   button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   .io-head{display:flex;align-items:center;gap:8px}
-  .error{padding:6px 14px;color:#b45309}
+  .error{padding:6px 14px;color:#b45309;overflow-wrap:anywhere}
+  .notice{padding:6px 14px;color:var(--muted);overflow-wrap:anywhere}
+  .center{display:flex;align-items:center;justify-content:center}
+  .setup-card{width:min(620px,100%);display:grid;gap:10px;padding:20px}
+  .setup-card h1,.run-card h1{font-size:18px;margin:0 0 6px;font-weight:600}
+  .setup-card label{font-size:12px;color:var(--muted)}
+  .source-picker{display:flex;gap:6px}
+  .source-picker input,textarea{min-width:0;width:100%;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--text);padding:8px;font:13px var(--mono)}
+  .source-picker button{flex:none}.samples{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .samples label{display:flex;flex-direction:column;gap:5px}.expected-label{display:flex;align-items:center;height:17px;gap:4px}
+  textarea{height:145px;resize:vertical}.primary{background:var(--accent);color:var(--panel);border-color:transparent;font-weight:600;padding:8px}
+  .primary:hover:not(:disabled){background:var(--accent);opacity:.88}
+  .open-record{justify-self:center;color:var(--muted)}
+  .run-card{display:grid;justify-items:center;gap:10px;text-align:center}
+  .run-card p{color:var(--muted);margin:0}
+  .spinner{width:22px;height:22px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.spinner{animation:none}}
   dialog{color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:0;width:min(760px,90vw);max-height:85vh}
   dialog::backdrop{background:#0003}
   .dialog-head{display:flex;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line)}

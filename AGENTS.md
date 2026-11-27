@@ -12,7 +12,7 @@ Product owner: Annouimo. Product decisions require owner review. Read docs/produ
 
 ## Workflow
 
-Work on the independent refactor branch, no force-push or deletion of unrelated work. Keep main and VERSION unchanged until owner-approved release. Phase 1 consumes existing records; no engine, stable protocol or publishing changes. Prefer small, reviewable commits. Experiment results are retained; no additional framework pre-research.
+Work on the independent refactor branch, no force-push or deletion of unrelated work. Keep main and VERSION unchanged until owner-approved release. Phase 1 accepted; Phase 2 integrates existing engine through an application controller, shares record/backend code and unifies Go module. Keep engine behavior, stable protocol, old TUI and publishing unchanged until real workflow acceptance. Prefer small, reviewable commits. Experiment results are retained; no additional framework pre-research.
 
 Prioritize typical student programs. Use simple name matching and real snapshots; do not reconstruct control flow. Remove superseded UI and dedicated logic instead of adding auxiliary modes. Preserve source, values, observation order, missing/truncated state; avoid claims of exact assignment/iteration when not observed.
 

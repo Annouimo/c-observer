@@ -4,6 +4,10 @@ on:
     branches: [refactor/printf-first]
     paths:
       - 'gui/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'internal/**'
+      - 'cmd/**'
       - 'testdata/snapshots/**'
       - '.github/workflows/gui-preview.yml'
   workflow_dispatch:
@@ -43,17 +47,19 @@ jobs:
           fi
           npm test
           npm run build
-      - name: Resolve Go dependencies once
-        working-directory: gui
-        run: go mod tidy
+      - name: Resolve Go dependencies and test shared packages
+        run: |
+          go mod tidy
+          go test ./internal/... ./cmd/...
+          go vet ./internal/... ./cmd/...
       - uses: actions/upload-artifact@v4
         with:
           name: gui-build-inputs
           path: |
             gui/frontend/dist
             gui/frontend/package-lock.json
-            gui/go.mod
-            gui/go.sum
+            go.mod
+            go.sum
           if-no-files-found: error
           retention-days: 7
   build:
@@ -77,11 +83,11 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: gui-build-inputs
-          path: gui
+          path: .
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.x'
-          cache-dependency-path: gui/go.sum
+          cache-dependency-path: go.sum
       - name: Build Windows GUI
         if: runner.os == 'Windows'
         shell: pwsh
@@ -103,6 +109,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(uname -m)" = arm64
+          go test -mod=readonly -tags production .
+          go vet -mod=readonly -tags production .
           app="out/C Observer Preview.app"
           mkdir -p "$app/Contents/MacOS"
           go build -mod=readonly -tags production -trimpath -ldflags "-s -w" -o "$app/Contents/MacOS/c-observer-preview" .

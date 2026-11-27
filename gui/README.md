@@ -1,15 +1,9 @@
-# GUI 离线原型
+# GUI 产品整合预览
 
-开发分支验收入口，不是正式发行。独立 Wails v3 Go 模块；后续接入引擎时整合。内置明确标识的 wrong-index 合成记录，也可打开本地 v1 JSON；不执行 C。
+开发分支，尚未发行。与原项目统一 Go 模块，保留 gui/ 入口直到正式迁移，旧 cmd/c-observer TUI 暂不变。原生启动默认选择 .c 源文件和样例，预期输出通过勾选区分未提供与空输出；运行后进入已验收的数据观察工作区。源码选择使用系统文件对话框，允许输入路径。运行期间可以取消；关闭应用取消并等待引擎清理。重跑复用配置并重新读取源码，保存记录显式写入主目录、唯一文件名。离线记录不执行代码。
 
-主界面：执行区间源码与紧凑样例并列、全宽数据、底部拖动条。点击数据模块、成员或元素关注其已知变化；再次点击取消。拖动或左右键切换相邻观察，变化跳转只依据实际相邻可比较值。— 为当前根无对应值，? 为未记录成员；不会用其他快照的值补齐。布局利用历史坐标，不拼接历史状态。完整源码与输入输出使用临时查看入口。
+原生预览二进制支持 [source.c]、--session FILE、--replay FILE、--version、--capabilities 及旧工具覆盖参数；session 自动采集，不修改 Companion。旧入口尚未替换，尚未验证正式 npm 调用。浏览器 Vite 开发预览使用标识为合成的夹具，不接本机引擎。
 
-开发：frontend 内 npm install、npm test、npm run build；gui 内 go mod tidy、go build -tags production。npx vite 可浏览器预览。CI Ubuntu 只准备一次前端和 Go 依赖，默认原生 Mac arm64 打包；手动启用 windows 时额外构建 Windows x64。归档保留 7 天。发行前提交锁文件并双平台验收，不运行 npm 发布。
+开发：gui/frontend 内 npm install、npm test、npm run build；仓库根 go mod tidy、go test ./internal/... ./cmd/...、go vet ./internal/... ./cmd/...；gui 内 go build -tags production。CI 默认 Mac arm64，Windows 按需，准备阶段验证共享包。可在目标机器设置 C_OBSERVER_REAL_APP=1 后运行 go test -run TestRealApplication ./internal/app（需要本机编译器及调试器）。真机运行、窗口关闭清理及 Companion 联调仍需验收。
 
-当前仍未接引擎或 Companion；输入输出按样例规则比较，另提供逐行原始字节差异，不是 OJ 判定。复杂数据、长记录、原生窗口拖动性能仍需实测。
-
-布局优化：按自然宽度排列，当前函数局部与全局，稳定相同连续元素可直接展开。开发可使用旧 testdata/snapshots/adaptive-array.json 和 data-first-stress.json 导入验收，均为合成记录。
-
-样例预览为带显式换行标记的单行摘要，完整字节对比保留；源码相邻步方向滚动为实验性反馈，拖动数据即时更新并保留短源码方向反馈，跨文件/大跳转无动画，遵循系统减少动效设置。
-
-时间线：点击轨道/拖动；点击标记带定位变化；滚轮微调；左右键逐步，Shift+左右键跳变化，Home/End 首尾，点击编号精确输入。点击源码或样例本身查看详情。源码方向动画保留，数据瞬时强调为实验；遵循系统减少动效设置。
+主界面仍为数据优先、时间线驱动：点击数据标记变化，拖动/点击轨道、点击标记带、滚轮、左右键、Shift+左右键、Home/End、编号精确定位；源码和样例整体点击查看详情。遵循减少动效设置。

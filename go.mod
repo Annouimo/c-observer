@@ -1,8 +1,9 @@
 module github.com/Routilet/c-observer
 
-go 1.23
+go 1.26.0
 
 require (
+	github.com/wailsapp/wails/v3 v3.1.0
 	github.com/charmbracelet/bubbletea v1.3.4
 	github.com/charmbracelet/lipgloss v1.0.0
 	github.com/mattn/go-runewidth v0.0.16

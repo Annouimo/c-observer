@@ -8,6 +8,7 @@ import (
 	"unicode"
 
 	"github.com/Routilet/c-observer/internal/observer"
+ "github.com/Routilet/c-observer/internal/record"
 )
 
 // Fixture is a development-only record. It is never presented as a live run.
@@ -32,22 +33,8 @@ func DecodeFixture(r io.Reader) (Fixture, error) {
 	return f, nil
 }
 
-// ValidateRun protects replay from malformed offsets, including non-monotonic ones.
-func ValidateRun(run observer.RunResult) error {
-	if run.Reason == "" {
-		return fmt.Errorf("missing run result")
-	}
-	prev := observer.OutputOffsets{}
-	for i, s := range run.Snapshots {
-		o := s.OutputOffsets
-		if s.ID != i || o.StdoutBytes < prev.StdoutBytes || o.StderrBytes < prev.StderrBytes ||
-			o.StdoutBytes > len(run.Output.Stdout) || o.StderrBytes > len(run.Output.Stderr) {
-			return fmt.Errorf("invalid snapshot or output offset at %d", i)
-		}
-		prev = o
-	}
-	return nil
-}
+// ValidateRun is retained for the legacy TUI and fixture decoder.
+func ValidateRun(run observer.RunResult) error { return record.ValidateRun(run) }
 
 // Replay position n is a synthetic END screen, not a debugger snapshot.
 type Replay struct {

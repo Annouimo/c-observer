@@ -52,7 +52,7 @@ test("partial member comparisons do not infer missing values; globals distinct",
 });
 test("reject duplicate ids and accept v1 nil slices",()=>{
   const x=structuredClone(fixture);x.run.snapshots[0].id=9;assert.throws(()=>parseDocument(x));
-  const y=structuredClone(fixture);delete y.synthetic;y.format="c-observer-record";y.schema_version=1;y.run.session.backend="gdb-mi";y.stdin="";y.expected_stdout=null;y.run.snapshots=null;y.run.session.sources=null;
+  const y=structuredClone(fixture);delete y.synthetic;y.format="c-observer-record";y.schema_version=1;y.run.session.backend="gdb-mi";y.stdin="";y.expected_stdout=null;y.observer_version="dev";y.recorded_at="2026-11-27T00:00:00Z";y.platform="darwin";y.arch="arm64";y.run.snapshots=null;y.run.session.sources=null;
   assert.equal(parseDocument(y).run.snapshots.length,0);
 });
 
@@ -190,4 +190,10 @@ test("normal scrub uses the same semantic motion as step navigation; rapid scrub
   assert.equal(replayFeedback(r,0,5,"drag",200).offset,0);
   assert.equal(replayFeedback(r,1,2,"seek",200).offset,0);
   assert.equal(replayFeedback(r,4,5,"seek",200).pulses.size,0);
+});
+
+test("live Go record envelope accepts nil slices and rejects invalid offsets",()=>{
+ const d={format:"c-observer-record",schema_version:1,observer_version:"dev",recorded_at:"2026-11-27T00:00:00Z",platform:"darwin",arch:"arm64",stdin:"NQo=",expected_stdout:"",comparison:"",run:{reason:"exited",session:{backend:"lldb-dap",sources:null},snapshots:[{id:0,location:{file:"",line:0},frames:null,output_offsets:{stdout_bytes:0,stderr_bytes:0}}],output:{stdout:"",stderr:null}}};
+ const p=parseDocument(structuredClone(d));assert.equal(p.stdin,"5\n");assert.equal(p.expected,"");assert.equal(p.synthetic,false);
+ d.run.snapshots[0].output_offsets.stdout_bytes=1;assert.throws(()=>parseDocument(d));
 });

@@ -46,6 +46,16 @@ export function parseDocument(x: any): Document {
     !r.snapshots.every((s: any, i: number) => s && s.id === i && validLocation(s.location) &&
       Array.isArray(s.frames) && s.frames.every((f: any) => f && validLocation(f.location) && Array.isArray(f.variables) && f.variables.every((v: any) => validVariable(v))) &&
       (s.globals === undefined || Array.isArray(s.globals) && s.globals.every((v: any) => validVariable(v))))) throw Error("观察记录数据不完整或损坏");
+  if(!synthetic){
+    if(typeof x.observer_version!=="string"||!x.observer_version||typeof x.recorded_at!=="string"||!x.platform||!x.arch)throw Error("观察记录缺少元数据");
+    const stdout=bytes(r.output.stdout??"").length,stderr=bytes(r.output.stderr??"").length;
+    let a=0,b=0;
+    for(const s of r.snapshots){
+      const p=s.output_offsets;
+      if(!p||!Number.isSafeInteger(p.stdout_bytes)||!Number.isSafeInteger(p.stderr_bytes)||p.stdout_bytes<a||p.stderr_bytes<b||p.stdout_bytes>stdout||p.stderr_bytes>stderr)throw Error("无效观察记录输出偏移");
+      a=p.stdout_bytes;b=p.stderr_bytes;
+    }
+  }
   const read = (s: any) => {
     if (s == null) return "";
     if (typeof s !== "string") throw Error("无效输入输出字段");
