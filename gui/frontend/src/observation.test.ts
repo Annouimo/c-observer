@@ -117,3 +117,29 @@ test("shared matrix column widths include later rows",()=>{
   const rows={name:"a",kind:"array",type:"int[][]",children:[{name:"[0]",index:0,kind:"array",type:"int[]",children:[{name:"[0]",index:0,kind:"scalar",type:"int",width:1,children:[]}]},{name:"[1]",index:1,kind:"array",type:"int[]",children:[{name:"[0]",index:0,kind:"scalar",type:"int",width:18,children:[]}]}]};
   assert.equal(sharedFields(rows)[0].width,18);assert.equal(rows.children[0].children[0].width,1);
 });
+
+
+import {samplePreview,coverageNote,sourceMotion} from "./observation.ts";
+test("sample preview is single-line, preserves visible line breaks, and bounds long text",()=>{
+  assert.equal(samplePreview("2\r\n2 7\n0 5"),"2 ↵ 2 7 ↵ 0 5");
+  assert.equal(samplePreview(""),"（空）");assert.equal(samplePreview(null),"未提供");
+  assert.ok(!/[\r\n\t]/.test(samplePreview("a\r\nb\tc\nd\r")));
+  assert.equal(samplePreview("x".repeat(1000),20).length,21);
+});
+test("coverage shown only when the grid cannot express missing array coordinates",()=>{
+  const r=run(),a=modules(r).find(m=>m.column.name==="a")!;
+  assert.equal(coverageNote(a.shape,selectedValues(r.snapshots[0],a.column)[0],true),"");
+  const b=loadFixture("adaptive-array").run,m=modules(b).find(m=>m.column.name==="a")!;
+  assert.equal(coverageNote(m.shape,selectedValues(b.snapshots[0],m.column)[0],true),"16/100010");
+  assert.equal(coverageNote(a.shape,undefined,true),"—");
+});
+test("source motion follows actual origin line direction, never distant seek or another file",()=>{
+  const r=run();
+  assert.equal(sourceMotion(r,0,1),0);
+  assert.equal(sourceMotion(r,1,2),21);
+  assert.equal(sourceMotion(r,2,3),-42);
+  assert.equal(sourceMotion(r,3,2),42);
+  assert.equal(sourceMotion(r,0,5),0);
+  r.snapshots[2].location.file="other.c";
+  assert.equal(sourceMotion(r,2,3),0);
+});

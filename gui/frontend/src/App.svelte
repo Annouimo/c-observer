@@ -1,9 +1,22 @@
 <script lang="ts">
   import example from "../../../testdata/snapshots/wrong-index.json";
   import DataModule from "./DataModule.svelte";
-  import {parseDocument,modules,selectedValues,matchingPrevious,changeEvents,nextEvent,columnKey,columnLabel,outputText,MAX_BYTES,visibleModules,isCompound,moduleWidth,replayContext,markerPath,sampleResult,outputRows,sourceTokens,type Column} from "./observation";
+  import {parseDocument,modules,selectedValues,matchingPrevious,changeEvents,nextEvent,columnKey,columnLabel,outputText,MAX_BYTES,visibleModules,isCompound,moduleWidth,replayContext,markerPath,sampleResult,outputRows,sourceTokens,samplePreview,sourceMotion,type Column} from "./observation";
   let doc=$state(parseDocument(example));
   let step=$state(0);
+  let motion=$state({offset:0,serial:0});
+  let dragging=false;
+  // Only the small source strip moves. No animation queue and no delayed
+  // snapshot state; cancel on new input and respect the OS motion preference.
+  function slide(node:HTMLElement,initial:{offset:number;serial:number}){
+    let animation:Animation|undefined;
+    return {update(next:{offset:number;serial:number}){
+      animation?.cancel();
+      if(next.offset&&!matchMedia("(prefers-reduced-motion: reduce)").matches&&typeof node.animate==="function"){
+        animation=node.animate([{transform:"translateY("+next.offset+"px)"},{transform:"translateY(0)"}],{duration:135,easing:"ease-out"});
+      }
+    },destroy(){animation?.cancel();}};
+  }
   let selected=$state<Column|null>(null);
   let error=$state("");
   let dialog:HTMLDialogElement;
@@ -24,7 +37,7 @@
   let tokenMap=$derived(new Map(doc.run.session.sources.map(s=>[s.path,sourceTokens(s.text)])));
   let sourceLines=$derived(tokenMap.get(currentSource?.path??"")??[]);
   let line=$derived(interval.origin?.line??0);
-  let context=$derived([line-1,line,line+1].map(n=>({tokens:sourceLines[n-1],line:n})));
+  let context=$derived(Array.from({length:7},(_,i)=>line+i-3).map(n=>({tokens:sourceLines[n-1],line:n})));
   function place(loc:typeof interval.origin){return loc?(loc.file||loc.reported_file||"未知位置").split(/[\\/]/).at(-1)+":"+ (loc.line||"?"):"未知位置";}
   let contextTitle=$derived(interval.before?place(interval.before)+" → "+place(interval.after):interval.origin?"初始观察 · "+place(interval.origin):"无观察位置");
   let incomplete=$derived(current?.frames[0]?.variables_complete===false||doc.run.session.capabilities?.globals===true&&current?.globals_complete===false);
@@ -36,7 +49,13 @@
   let sourcePath=$state("");
   let fullLines=$derived(doc.run.session.sources.find(s=>s.path===sourcePath)?.text.split(/\r?\n/)??[]);
   const reasons:Record<string,string>={exited:"运行结束",nonzero_exit:"非零退出",signaled:"异常终止",compile_failed:"编译失败",limit_reached:"采集上限",timed_out:"超时",cancelled:"已取消",backend_failed:"采集失败",invalid_config:"配置错误"};
-  function go(id:number){if(total&&Number.isFinite(id))step=Math.max(0,Math.min(total-1,Math.round(id)));}
+  function go(id:number,animate=true){
+    if(!total||!Number.isFinite(id))return;
+    const next=Math.max(0,Math.min(total-1,Math.round(id)));
+    if(next===step)return;
+    motion={offset:animate?sourceMotion(doc.run,step,next):0,serial:motion.serial+1};
+    step=next;
+  }
   function choose(c:Column){selected=active===columnKey(c)?null:c;}
   function show(mode:"source"|"io"){
     dialogMode=mode;sourcePath=currentSource?.path??doc.run.session.sources[0]?.path??"";dialog.showModal();
@@ -51,18 +70,18 @@
       if(file.size>MAX_BYTES)throw Error("文件超过 128 MiB");
       const next=parseDocument(JSON.parse(await file.text()));
       outputText(next.run.output.stdout);outputText(next.run.output.stderr);
-      eventCache=new Map();doc=next;step=0;selected=null;error="";
+      eventCache=new Map();motion={offset:0,serial:motion.serial+1};doc=next;step=0;selected=null;error="";
     }catch(e){error=e instanceof Error?e.message:String(e);}
     input.value="";
   }
 </script>
-<svelte:window onkeydown={keys}/>
+<svelte:window onkeydown={keys} onpointerup={()=>{dragging=false;}}/>
 <header>
   <strong>C Observer</strong>
   <label class="file">打开记录<input type="file" accept=".json,application/json" onchange={load}/></label>
   <span class="spacer"></span>
   {#if doc.synthetic}<small>合成记录</small>{/if}
-  <small>{reasons[doc.run.reason]??doc.run.reason}</small>
+  {#if doc.run.reason!=="exited"}<small>{reasons[doc.run.reason]??doc.run.reason}</small>{/if}
   <button class="result" class:bad={result==="输出不一致"||result==="运行未正常结束"||result==="输出不完整"} onclick={()=>show("io")} title="查看输入输出与运行状态">{result} ›</button>
 </header>
 {#if error}<div class="error" role="alert">{error}</div>{/if}
@@ -71,15 +90,17 @@
     <div class="context-head"><span title={contextTitle}>{contextTitle}</span><span class="spacer"></span><button class="quiet" onclick={()=>show("source")} disabled={!doc.run.session.sources.length}>源码</button></div>
     <div class="context-lines">
       {#if line>0&&sourceLines[line-1]}
-        {#each context as r}<div class="code-line" class:current-line={r.line===line}><span class="line-no">{r.tokens?r.line:""}</span><code>{#each r.tokens??[] as t}<span class={t.kind}>{t.text}</span>{/each}</code></div>{/each}
+        <div class="source-window" use:slide={motion}>
+          {#each context as r}<div class="code-line" class:current-line={r.line===line}><span class="line-no">{r.tokens?r.line:""}</span><code title={r.tokens?.map(t=>t.text).join("")}>{#each r.tokens??[] as t}<span class={t.kind}>{t.text}</span>{/each}</code></div>{/each}
+        </div>
       {:else}<div class="code-line"><span class="line-no">—</span><code>无可映射的暂停源码</code></div>{/if}
     </div>
   </div>
   <button class="sample" onclick={()=>show("io")} title="本次完整样例输入输出">
     <span class="sample-title">本次样例 <span>完整对比 ›</span></span>
-    <span class="sample-row"><small>输入</small><code>{doc.stdin||"（空）"}</code></span>
-    <span class="sample-row"><small>预期</small><code>{doc.expected===null?"未提供":doc.expected||"（空）"}</code></span>
-    <span class="sample-row" class:bad={result==="输出不一致"}><small>实际</small><code>{actual||"（空）"}</code></span>
+    <span class="sample-row"><small>输入</small><code>{samplePreview(doc.stdin)}</code></span>
+    <span class="sample-row"><small>预期</small><code>{samplePreview(doc.expected)}</code></span>
+    <span class="sample-row" class:bad={result==="输出不一致"}><small>实际</small><code>{samplePreview(actual)}</code></span>
   </button>
 </section>
 <main>
@@ -114,7 +135,7 @@
   <div class="timeline">
     <div class="track" aria-hidden="true"></div>
     <svg class="markers" viewBox="0 0 1000 12" preserveAspectRatio="none" aria-hidden="true"><path d={marks} vector-effect="non-scaling-stroke"/></svg>
-    <input class="scrubber" aria-label="观察时间线" type="range" min="0" max={Math.max(0,total-1)} step="1" value={step} disabled={total<2} oninput={e=>go(Number(e.currentTarget.value))}/>
+    <input class="scrubber" aria-label="观察时间线" type="range" min="0" max={Math.max(0,total-1)} step="1" value={step} disabled={total<2} onpointerdown={()=>{dragging=true;}} onpointerup={()=>{dragging=false;}} onpointercancel={()=>{dragging=false;}} onlostpointercapture={()=>{dragging=false;}} onkeydown={()=>{dragging=false;}} oninput={e=>go(Number(e.currentTarget.value),!dragging)}/>
   </div>
   <div class="timeline-controls">
     <button class="quiet" disabled={!step} onclick={()=>go(0)} title="首个观察" aria-label="首个观察">|‹</button>
@@ -133,7 +154,7 @@
   <div class="dialog-body">
     {#if dialogMode==="source"}
       {#if doc.run.session.sources.length>1}<select aria-label="源码文件" bind:value={sourcePath}>{#each doc.run.session.sources as s}<option value={s.path}>{s.path}</option>{/each}</select>{/if}
-      {#each fullLines as text,i}<div class="code-line" class:current-line={sourcePath===current?.location.file&&line===i+1}><span class="line-no">{i+1}</span><code>{text||" "}</code></div>{/each}
+      {#each fullLines as text,i}<div class="code-line" class:current-line={sourcePath===interval.origin?.file&&line===i+1}><span class="line-no">{i+1}</span><code>{text||" "}</code></div>{/each}
     {:else}
       <small>{result} · {doc.comparison||"原始字节"}（样例对照，非 OJ 判定；逐行表显示原始字节差异）</small>
       <h2>输入</h2><pre>{doc.stdin}</pre>
@@ -147,7 +168,7 @@
 </dialog>
 <style>
   :global(*){box-sizing:border-box}
-  :global(body){margin:0;font:13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text);background:var(--bg);--bg:#f6f7f9;--panel:#fff;--text:#20242b;--muted:#707987;--line:#e0e4eb;--accent:#285cba;--soft:#eaf1ff;--hover:#f0f4fa;--mono:ui-monospace,SFMono-Regular,Consolas,monospace;color-scheme:light}
+  :global(body){margin:0;font:13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text);background:var(--bg);--bg:#f5f6f8;--panel:#fff;--text:#20242b;--muted:#626d7c;--line:#dfe3e9;--accent:#285cba;--soft:#eaf1ff;--hover:#f0f4fa;--mono:ui-monospace,SFMono-Regular,Consolas,monospace;color-scheme:light}
   @media(prefers-color-scheme:dark){:global(body){--bg:#161a20;--panel:#20262e;--text:#e5e9ef;--muted:#a1acb9;--line:#39434e;--accent:#92b8ff;--soft:#273a56;--hover:#29313b;color-scheme:dark}}
   :global(#app){height:100vh;display:flex;flex-direction:column;min-height:0}
   header,.context,footer{flex:none;background:var(--panel)}
@@ -157,17 +178,20 @@
   button:hover,.file:hover{background:var(--hover)}button:disabled{opacity:.35;cursor:default}
   .file input{position:absolute;opacity:0;width:1px;height:1px}.file:focus-within{outline:2px solid var(--accent)}
   .result{font-size:12px}.bad{color:#b45309}
-  .context{display:grid;grid-template-columns:minmax(0,3fr) minmax(180px,2fr);gap:12px;padding:6px 14px 8px;border-bottom:1px solid var(--line)} .source-context{min-width:0} .sample{display:grid;grid-template-rows:17px repeat(3,21px);min-width:0;text-align:left;border:0;border-left:1px solid var(--line);border-radius:0;padding:0 0 0 12px;overflow:hidden}.sample-title{display:flex;justify-content:space-between;color:var(--muted);font-size:11px}.sample-row{display:grid;grid-template-columns:30px minmax(0,1fr);gap:6px;align-items:center;min-width:0}.sample-row code{overflow:hidden;text-overflow:ellipsis;white-space:pre}.keyword{color:var(--accent);font-weight:600}.comment{color:var(--muted)}.literal{color:var(--muted)}
+  .context{display:grid;grid-template-columns:minmax(0,3fr) minmax(180px,2fr);gap:12px;padding:6px 14px 8px;border-bottom:1px solid var(--line)} .source-context{min-width:0} .sample{display:grid;grid-template-rows:17px repeat(3,21px);min-width:0;text-align:left;border:0;border-left:1px solid var(--line);border-radius:0;padding:0 0 0 12px;overflow:hidden}.sample-title{display:flex;justify-content:space-between;color:var(--muted);font-size:11px}.sample-row{display:grid;grid-template-columns:30px minmax(0,1fr);gap:6px;align-items:center;min-width:0;min-height:0;height:21px;overflow:hidden}.sample-row code{display:block;min-width:0;max-width:100%;height:21px;overflow:hidden;text-overflow:ellipsis;white-space:pre;line-height:21px}.keyword{color:var(--accent);font-weight:600}.comment{color:var(--muted)}.literal{color:var(--muted)}
   .context-head{display:flex;align-items:center;color:var(--muted);font-size:11px;gap:8px;margin-bottom:3px}
   .context-head>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .quiet{border:0;padding:3px 7px;font-size:12px;background:transparent}
-  .context-lines{height:63px;overflow:auto}
+  .context-lines{height:63px;overflow:hidden;position:relative}
+  .source-window{margin-top:-42px}
+  .context-lines .code-line{height:21px;min-height:21px}
+  .context-lines code{overflow:hidden;text-overflow:ellipsis;white-space:pre}
   .code-line{display:flex;gap:12px;min-height:21px;line-height:21px;align-items:baseline}
   .line-no{flex:0 0 30px;text-align:right;font:11px var(--mono);color:var(--muted)}
   code{font:12px/21px var(--mono);white-space:pre;min-width:0}
   .current-line{background:var(--soft);color:var(--accent);border-radius:3px}
   main{flex:1;min-height:0;overflow:auto;padding:12px 14px 18px}
-  .data-group{margin-bottom:13px}h2{font-size:12px;margin:0 0 6px;color:var(--muted);font-weight:600}
+  .data-group{margin-bottom:13px}h2{font-size:12px;margin:0 0 6px;color:var(--muted);font-weight:500}
   .scalars,.compounds{display:flex;flex-wrap:wrap;align-items:flex-start;gap:6px}
   .module-slot{width:min(100%,var(--ideal));max-width:100%;min-width:0}
   .compounds{gap:8px;margin-top:8px}.compounds .module-slot{flex:0 1 var(--ideal)}
@@ -187,7 +211,9 @@
   .scrubber::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;background:var(--accent);border:2px solid var(--panel);border-radius:50%;margin-top:-6px;box-shadow:0 0 0 1px var(--accent)}
   .scrubber::-moz-range-track{height:4px;background:transparent}
   .scrubber::-moz-range-thumb{width:12px;height:12px;background:var(--accent);border:2px solid var(--panel);border-radius:50%}
-  .timeline-controls .quiet{font:18px/1 system-ui;min-width:30px}
+  .timeline-controls .quiet{font:18px/1 system-ui;min-width:32px;min-height:28px}
+  button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .quiet:hover:not(:disabled){background:var(--hover);border-radius:4px}
   .scrubber:disabled{cursor:default}
   .position{font-size:12px;color:var(--muted);white-space:nowrap}
   .position input{width:65px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--text);font:13px var(--mono);text-align:center;padding:3px}

@@ -1,6 +1,6 @@
 <script lang="ts">
   import Self from "./DataModule.svelte";
-  import {columnKey,columnLabel,member,memberLabel,childValue,observedChange,displayValue,sharedFields,label,arraySegments,foldValue,moduleWidth,type Shape,type Variable,type Column} from "./observation";
+  import {columnKey,columnLabel,member,memberLabel,childValue,observedChange,displayValue,sharedFields,label,arraySegments,foldValue,moduleWidth,coverageNote,type Shape,type Variable,type Column} from "./observation";
   let {shape,column,value,previous,active,onSelect,root=false,ambiguous=[]}:{
     shape:Shape;column:Column;value?:Variable;previous?:Variable;active:string;
     onSelect:(c:Column)=>void;root?:boolean;ambiguous?:Variable[];
@@ -13,15 +13,16 @@
   let segments=$derived(shape.kind==="array"?arraySegments(shape):[]);
   let expanded=$state<number[]>([]);
   function toggleRange(i:number){expanded=expanded.includes(i)?expanded.filter(x=>x!==i):[...expanded,i];}
+  let coverage=$derived(coverageNote(shape,value,root));
   let title=$derived(root?column.name:memberLabel(shape).replace(/^\./,""));
 </script>
 {#if ambiguous.length>1}
   <div class="module ambiguous"><strong>{title}</strong><small>同名 {ambiguous.length} 项，无法唯一对应</small><details><summary>已记录数据</summary><pre>{JSON.stringify(ambiguous,null,2)}</pre></details></div>
 {:else if compound}
   <section class="module compound" class:chosen class:root class:absent={!value&&root}>
-    <button class="heading" aria-pressed={chosen} onclick={()=>onSelect(column)} title={"关注 "+columnLabel(column)}>
+    <button class="heading" aria-pressed={chosen} onclick={()=>onSelect(column)} title={columnLabel(column)+" · "+(value?value.type+" · "+label(value):displayValue(value,root))}>
       <span>{title}{shape.kind==="array"&&shape.arrayLength!==undefined?"["+shape.arrayLength+"]":""}</span>
-      <small>{value?value.status==="observed"?value.children_complete===false?"部分 · "+label(value):value.type:displayValue(value):root?"—":"?"}</small>
+      {#if coverage}<small title="本次记录覆盖情况">{coverage}</small>{/if}
       {#if diff}<span class="dot" title="与前一观察有已知差异"></span>{/if}
     </button>
     {#if tabular}
@@ -73,15 +74,17 @@
   button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent}
   button:hover{background:var(--hover)}button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
   .scalar{display:flex;align-items:baseline;gap:5px;text-align:left;padding:5px 8px;width:100%;min-width:0;min-height:30px;position:relative}
-  .scalar-name{font:12px var(--mono);color:var(--muted);flex:none;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .number{font:600 14px/1.35 var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+  .scalar-name{font:12px var(--mono);color:var(--muted);flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .number{font:600 14px/1.35 var(--mono);flex:0 0 auto;max-width:65%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
   .change-mark{color:var(--accent);position:absolute;right:3px;top:0;font-size:9px}
   .diff{color:var(--accent);background:var(--soft)}
   .unknown .number,.unknown.cell,.unknown.element{color:var(--muted)}
   small{color:var(--muted);font-size:11px}
-  .heading{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);font:600 13px var(--mono);min-height:35px}
+  .heading{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:6px 9px;border-bottom:1px solid var(--line);font:600 13px var(--mono);min-height:32px}
+  .heading>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .heading small{font:11px system-ui;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-left:auto}
-  .dot{background:var(--accent);height:6px;width:6px;border-radius:100%;flex:none}
+  .dot{background:var(--accent);height:6px;width:6px;border-radius:100%;flex:none;margin-left:auto}
+  .heading small+.dot{margin-left:0}
   .inner-scroll{max-height:290px;overflow:auto;min-width:0}
   .array{display:flex;flex-wrap:wrap;align-content:start;padding:5px;gap:3px}
   .element{display:flex;flex-direction:column;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:3px;min-height:38px;padding:3px;min-width:0;max-width:100%;font:13px var(--mono)}
@@ -90,6 +93,7 @@
   th{font-weight:400;color:var(--muted);background:var(--panel);white-space:nowrap;font-size:11px}
   thead th{position:sticky;top:0;z-index:1;padding:5px 8px;border-bottom:1px solid var(--line)}
   td,tbody th{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:0;text-align:center}
+  td:last-child{border-right:0}
   tbody tr:last-child td,tbody tr:last-child th{border-bottom:0}
   .cell,.index{display:block;width:100%;min-width:58px;min-height:29px;padding:4px 8px;font-family:var(--mono);white-space:nowrap}
   .index{min-width:32px;color:var(--muted)}

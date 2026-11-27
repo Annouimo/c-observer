@@ -305,3 +305,36 @@ export function sourceTokens(text:string):Token[][]{
   }
   return lines;
 }
+
+
+// A preview never injects actual line breaks into the fixed-height sample rows.
+// Full original text/bytes remain available from the sample comparison.
+export function samplePreview(text:string|null,limit=160):string{
+  if(text===null)return "未提供";
+  if(!text.length)return "（空）";
+  const normalized=text.replace(/\r\n/g,"\n").replace(/\n/g," ↵ ").replace(/\r/g,"\\r").replace(/\t/g," ⇥ ");
+  return normalized.length>limit?normalized.slice(0,limit)+"…":normalized;
+}
+// Redundant coverage labels disappear when every coordinate is already
+// visible in the layout (unknown values still render as ?).
+export function coverageNote(shape:Shape,value:Variable|undefined,root=false):string{
+  if(!value||value.status!=="observed")return displayValue(value,root);
+  if(value.children_complete!==false)return "";
+  if(shape.kind==="array"&&value.array_length!==undefined){
+    const recorded=new Set((value.children??[]).filter(c=>c.index!==undefined&&c.index>=0&&c.index<value.array_length!).map(c=>c.index)).size;
+    const visible=new Set(shape.children.filter(c=>c.index!==undefined&&c.index>=0&&c.index<value.array_length!).map(c=>c.index)).size;
+    // A full coordinate grid exposes absent elements; if the backend flags
+    // partial capture for some other reason, preserve its qualification.
+    if(visible===value.array_length&&recorded<value.array_length)return "";
+    return recorded<value.array_length?recorded+"/"+value.array_length:"部分";
+  }
+  return "部分";
+}
+// Direction refers to observed source positions, not an inferred execution
+// path. Only adjacent replay steps in the same mapped source animate.
+export function sourceMotion(run:Run,from:number,to:number):number{
+  if(Math.abs(from-to)!==1)return 0;
+  const a=replayContext(run,from).origin,b=replayContext(run,to).origin;
+  if(!a||!b||!a.file||a.file!==b.file||a.line<=0||b.line<=0||!run.session.sources.some(s=>s.path===a.file))return 0;
+  return Math.max(-2,Math.min(2,b.line-a.line))*21;
+}
