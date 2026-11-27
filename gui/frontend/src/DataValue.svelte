@@ -9,7 +9,7 @@
   let fields=$derived(records?[...new Set(value.children!.flatMap(c=>c.children!.map(m=>m.name)))]:[]);
 </script>
 {#if value.status==="observed"&&value.children?.length}
-  <details>
+  <details open>
     <summary title={value.type+" · "+label(value)}>
       {#if diffs.length}
         {#each diffs.slice(0,2) as d}<span class="diff">{d.path}: {d.before} → {d.after}</span>{/each}

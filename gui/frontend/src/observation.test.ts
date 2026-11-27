@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { parseDocument, tokenize, groupTrace, flatten, values, changed, label, valueChanged, sourceDocument, differences, memberColumns, groupDifferences, loopRanges, type Run } from "./observation.ts";
+import { parseDocument, tokenize, groupTrace, flatten, values, changed, label, valueChanged, sourceDocument, differences, memberColumns, groupDifferences, loopRanges, replacedLines, smallLayout, atPath, type Run } from "./observation.ts";
 const fixture=JSON.parse(readFileSync(new URL("../../../testdata/snapshots/wrong-index.json",import.meta.url),"utf8"));
 test("fixture is explicitly synthetic and preserves observed values",()=>{
   const doc=parseDocument(fixture);
@@ -86,4 +86,26 @@ test("nested calls preserve raw order and anchor to caller",()=>{
 });
 test("loop ranges ignore braces in literals and comments",()=>{
   assert.deepEqual(loopRanges({path:"x.c",text:'// for (;;) {\nfor (;;) {\n puts("}");\n}\n'}),[{file:"x.c",start:2,end:4}]);
+});
+
+test("replacement hides represented loop body only while open",()=>{
+  const {run}=parseDocument(fixture), {rows}=sourceDocument(run,"main.c");
+  assert.deepEqual([...replacedLines(rows,()=>true)],[8,9]);
+  assert.equal(replacedLines(rows,()=>false).size,0);
+  assert.ok(rows.some(r=>r.line===10));
+});
+test("stable small layout includes missing index and never invents value",()=>{
+  const {run}=parseDocument(fixture), c={name:"a",fn:"main"};
+  const all=run.snapshots.flatMap(s=>values(s,c)), slots=smallLayout(all);
+  assert.deepEqual(slots.map(s=>s.label),["[0].score","[1].score","[2].score","[3].score"]);
+  assert.equal(atPath(all[0],slots[3].path),undefined);
+  assert.equal(atPath(all[2],slots[0].path)?.value,"17");
+  assert.deepEqual(smallLayout([{...all[0],array_length:10000}]),[]);
+});
+test("group summary excludes changes entering the group",()=>{
+  const {run}=parseDocument(fixture);
+  const loop=groupTrace(run).find(n=>n.kind==="group"&&n.groupType==="loop");
+  assert.ok(loop&&loop.kind==="group");
+  assert.deepEqual(groupDifferences(run,loop.children[1],{name:"i",fn:"main"}),[]);
+  assert.equal(groupDifferences(run,loop.children[1],{name:"a",fn:"main"})[0].path,"[1].score");
 });

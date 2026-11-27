@@ -150,7 +150,7 @@ export function tokenize(text: string): Token[][] {
   }
   return result;
 }
-export type TraceNode = { kind:"observation"; snapshot: Snapshot } | { kind:"group"; key:string; label:string; children:TraceNode[]; anchor:Location; groupType:"loop"|"round"|"call" };
+export type TraceNode = { kind:"observation"; snapshot: Snapshot } | { kind:"group"; key:string; label:string; children:TraceNode[]; anchor:Location; groupType:"loop"|"round"|"call"; endLine?:number };
 export function flatten(nodes: TraceNode[]): Snapshot[] {
   return nodes.flatMap(n => n.kind === "observation" ? [n.snapshot] : flatten(n.children));
 }
@@ -215,7 +215,7 @@ export function groupTrace(run:Run):TraceNode[] {
         if(parts.length<2)continue;
         const anchor={...first.location,line:r.start};
         const rounds:TraceNode[]=parts.map((p,n)=>({kind:"group",groupType:"round",key:"round-"+p[0].id+"-"+r.start,label:"第 "+(n+1)+" 组观察",anchor,children:build(p,level+1,[...excluded,r])}));
-        out.push({kind:"group",groupType:"loop",key:"loop-"+first.id+"-"+r.start,label:rounds.length+" 组重复观察",anchor,children:rounds});
+        out.push({kind:"group",groupType:"loop",key:"loop-"+first.id+"-"+r.start,label:rounds.length+" 组",anchor,endLine:r.end,children:rounds});
         out.push(...build(tail,level+1,[...excluded,r]));
         i=j;grouped=true;break;
       }
@@ -252,10 +252,71 @@ export function sourceDocument(run:Run,path:string,tree=groupTrace(run)):{rows:S
 export function groupDifferences(run:Run,n:TraceNode,c:Column,limit=3):Difference[]{
   const out:Difference[]=[];
   if(n.kind!=="group")return out;
-  for(const s of flatten(n.children)){
+  for(const s of flatten(n.children).slice(1)){
     const v=values(s,c);
     if(v.length===1)out.push(...differences(previousValue(run,s,c),v[0],"",limit-out.length));
     if(out.length>=limit)break;
   }
   return out;
+}
+
+// Hide only the static duplicate of a represented body line, never a
+// standalone observation, an unknown line, the loop header or closing brace.
+export function replacedLines(rows:SourceRow[],expanded:(n:Extract<TraceNode,{kind:"group"}>)=>boolean):Set<number>{
+  const hidden=new Set<number>();
+  for(const row of rows)for(const n of row.nodes){
+    if(n.kind!=="group"||n.groupType!=="loop"||!expanded(n)||n.endLine===undefined)continue;
+    const represented=new Set(flatten(n.children).filter(s=>s.location.file===n.anchor.file&&s.location.function===n.anchor.function).map(s=>s.location.line));
+    for(const r of rows)if(r.line>n.anchor.line&&r.line<=n.endLine&&!r.nodes.length&&represented.has(r.line)&&r.tokens.some(t=>t.text.trim()&&t.text!=="}"))hidden.add(r.line);
+  }
+  return hidden;
+}
+export type LeafSlot={path:Member[];label:string};
+export function atPath(v:Variable|undefined,path:Member[]):Variable|undefined {
+  for(const p of path){
+    if(!v||v.status!=="observed")return undefined;
+    const match=(v.children??[]).filter(c=>p.index!==undefined?c.index===p.index:c.index===undefined&&c.name===p.name);
+    v=match.length===1?match[0]:undefined;
+  }
+  return v;
+}
+// A single stable leaf layout for a column across all recorded observations.
+// Bound size by the declared array length, not merely the captured prefix.
+export function smallLayout(all:Variable[],limit=8):LeafSlot[] {
+  const roots=all.filter(v=>v.status==="observed");
+  if(!roots.length||!roots.some(v=>v.children?.length)||roots.some(v=>v.type!==roots[0].type||v.kind!==roots[0].kind))return [];
+  function walk(vs:Variable[],path:Member[]):Member[][]|null{
+    const observed=vs.filter(v=>v.status==="observed");
+    if(!observed.length)return [path];
+    const first=observed[0];
+    if(observed.some(v=>v.kind!==first.kind||v.type!==first.type))return null;
+    if(first.kind==="array"){
+      const size=first.array_length;
+      if(size===undefined||size>limit||size<=0||observed.some(v=>v.array_length!==size))return null;
+      const children=observed.flatMap(v=>v.children??[]);
+      if(!children.length||children.some(v=>v.index===undefined||v.index>=size))return null;
+      const result:Member[][]=[];
+      for(let i=0;i<size;i++){
+        const actual=children.filter(c=>c.index===i);
+        const branch=walk(actual.length?actual:children,[...path,{name:"["+i+"]",index:i}]);
+        if(!branch)return null;result.push(...branch);if(result.length>limit)return null;
+      }
+      return result;
+    }
+    if(first.kind==="struct"){
+      const children=observed.flatMap(v=>v.children??[]);
+      if(!children.length||observed.some(v=>v.children_complete!==true))return null;
+      const names=[...new Set(children.map(c=>c.name))];
+      const result:Member[][]=[];
+      for(const name of names){
+        const branch=walk(children.filter(c=>c.name===name),[...path,{name}]);
+        if(!branch)return null;result.push(...branch);if(result.length>limit)return null;
+      }
+      return result;
+    }
+    if(observed.some(v=>v.children?.length))return null;
+    return [path];
+  }
+  const paths=walk(roots,[]);
+  return paths&&paths.length<=limit?paths.filter(p=>p.length).map(path=>({path,label:path.map(memberLabel).join("")})):[];
 }

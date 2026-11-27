@@ -8,3 +8,5 @@
 - 目前输入输出仅显示解码文本一致性，不实现正式样例规则或逐字节差异。复杂数组展示、嵌套循环和原生窗口体验须继续验收。
 
 开发：在 frontend 中运行 npm install、npm test、npm run build；随后在 gui 中 go mod tidy、go build -tags production。开发浏览器可用 npx vite。CI 在 Ubuntu 上只执行一次前端安装、测试、构建和 Go 依赖解析，再将共享 dist、go.mod、go.sum、package-lock.json 交给 Windows/macOS 原生打包；前置失败时不启动原生矩阵，新提交取消过时预览构建。预览归档和共享构建输入保留 7 天；正式发行前提交锁文件。不要运行 npm 发布。
+
+当前迭代：循环替换式展开、固定小数据成员布局、复杂值临时详情、行号原位查询。保留原始时间顺序以核对实际观察；分组摘要仅组内相邻差异。
