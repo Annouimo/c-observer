@@ -21,6 +21,8 @@ CI 额外使用 Windows GUI 子系统参数，以及 macOS .app 包装与 ad-hoc
 
 ## 实机验收
 
+2026-11-27：双平台真机验收通过。详见 [技术验证报告](TEST_REPORT.md)。以下清单保留供复测使用。
+
 下载 Actions 的对应平台 artifact，解压后运行 EXE 或 APP（macOS 未做 Apple 公证，首次可能需按系统提示授权运行可信实验产物）。
 
 - [ ] 独立窗口正常打开；不启动外部浏览器。
