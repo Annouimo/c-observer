@@ -184,6 +184,9 @@ func (c *capture) snapshot(frames []stackFrame) (observer.Snapshot, error) {
 					var declaration *observer.SourceLocation
 					if localNames != nil {
 						declaration = c.identity.inferDeclaration(variable, raw.Location, localNames[variable.Name])
+						if declaration == nil {
+							declaration = c.identity.inferLoopDeclaration(variable, raw.Location, localNames[variable.Name])
+						}
 					}
 					v, err := c.variable(variable, fmt.Sprintf("%s:%s:%d", frame.ID, name, i), variableName(variable), declaration, 0, &nodes)
 					if err != nil {

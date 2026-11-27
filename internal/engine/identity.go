@@ -15,24 +15,31 @@ import (
 // lifetime here. Clang supplies the lexical boundary and DAP supplies a
 // complete stack identifying the still-active entry call.
 type mainIdentity struct {
-	source string
-	lines  map[string]int
-	caller string
+	source  string
+	lines   map[string]int
+	caller  string
+	loops   []loopDecl
+	decls   []localDecl
+	hasGoto bool
+}
+
+type astLoc struct {
+	Offset       *int
+	Line         int
+	File         string
+	PresumedFile string
+	PresumedLine int
+	ExpansionLoc *struct{}
+	SpellingLoc  *struct{}
+	IncludedFrom *struct{}
 }
 
 type astNode struct {
 	Kind, Name, StorageClass string
-	Loc                      struct {
-		Offset       *int
-		File         string
-		PresumedFile string
-		PresumedLine int
-		ExpansionLoc *struct{}
-		SpellingLoc  *struct{}
-		IncludedFrom *struct{}
-	}
-	Type  struct{ QualType, DesugaredQualType string }
-	Inner []astNode
+	Loc                      astLoc
+	Range                    struct{ Begin, End astLoc }
+	Type                     struct{ QualType, DesugaredQualType string }
+	Inner                    []astNode
 }
 
 type declarationKey struct {
@@ -42,10 +49,13 @@ type declarationKey struct {
 }
 
 type sourceIndex struct {
-	functions  []declarationKey
-	mainLines  map[string]int
-	mainSource string
-	globals    map[declarationKey]observer.VariableScope
+	functions   []declarationKey
+	mainLines   map[string]int
+	mainSource  string
+	mainLoops   []loopDecl
+	mainDecls   []localDecl
+	mainHasGoto bool
+	globals     map[declarationKey]observer.VariableScope
 }
 
 func inspectSource(ctx context.Context, compiler, dir, source, text string, args []string, origins sourceOrigins) sourceIndex {
@@ -123,6 +133,7 @@ func inspectSource(ctx context.Context, compiler, dir, source, text string, args
 				}
 			}
 			index.mainLines, index.mainSource = lines, file
+			index.indexMainBody(body, text, origins)
 		}
 	})
 	_ = stdout.Close()
@@ -262,12 +273,18 @@ func (m mainIdentity) inferDeclaration(raw dapVariable, stop observer.SourceLoca
 }
 
 func (m mainIdentity) mark(v *observer.Variable, name string) {
-	if v.Declaration == nil || v.Declaration.File != m.source || m.lines[name] != v.Declaration.Line ||
-		v.Declaration.Line == 0 {
+	if v.Declaration == nil || v.Declaration.File != m.source || v.Declaration.Line == 0 {
 		return
 	}
-	v.Scope = observer.LocalScope
-	markObject(v, fmt.Sprintf("entry-main:%d:%s", v.Declaration.Line, name))
+	if m.lines[name] == v.Declaration.Line {
+		v.Scope = observer.LocalScope
+		markObject(v, fmt.Sprintf("entry-main:%d:%s", v.Declaration.Line, name))
+		return
+	}
+	if loop := m.loopForDeclaration(name, *v.Declaration); loop != nil {
+		v.Scope = observer.LocalScope
+		markObject(v, fmt.Sprintf("entry-main:L%d:%s", loop.declLine, loop.name))
+	}
 }
 
 func markObject(v *observer.Variable, id string) {

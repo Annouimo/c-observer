@@ -1,0 +1,11 @@
+corpus=research/loop-identity-encoding/corpus/birthday-expanded.ids.txt.gz occurrences=1680 unique=169 avg_len=34.5
+heap strings=99.5 KiB uint32=13.1 KiB hash64=13.3 KiB
+match/string-map          36882.0 ns/op        0 B/op      0 allocs/op
+match/uint32-map          55418.0 ns/op        0 B/op      0 allocs/op
+match/hash64-map          87744.0 ns/op        0 B/op      0 allocs/op
+match/struct-key-map     147739.0 ns/op        0 B/op      0 allocs/op
+build/fmt-sprintf        454488.0 ns/op   155254 B/op   6720 allocs/op
+build/string-concat      114720.0 ns/op    74584 B/op   1680 allocs/op
+build/intern             159683.0 ns/op    81152 B/op   1683 allocs/op
+alloc/string-copy         51852.0 ns/op    74584 B/op   1680 allocs/op
+lookup/uint32+reverse     35883.0 ns/op        0 B/op      0 allocs/op

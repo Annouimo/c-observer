@@ -1,0 +1,11 @@
+corpus=research/loop-identity-encoding/corpus/birthday-native.ids.txt.gz occurrences=1680 unique=86 avg_len=35.6
+heap strings=102.0 KiB uint32=10.1 KiB hash64=13.3 KiB
+match/string-map       median    34934.0 ns/op (min 34160.0 max 35031.0)        0 B/op      0 allocs/op
+match/uint32-map       median    53380.0 ns/op (min 53107.0 max 56047.0)        0 B/op      0 allocs/op
+match/hash64-map       median    86390.0 ns/op (min 83411.0 max 88429.0)        0 B/op      0 allocs/op
+match/struct-key-map   median   148425.0 ns/op (min 147863.0 max 151430.0)        0 B/op      0 allocs/op
+build/fmt-sprintf      median   466634.0 ns/op (min 466423.0 max 470364.0)   157790 B/op   6720 allocs/op
+build/string-concat    median   114122.0 ns/op (min 112559.0 max 117377.0)    77120 B/op   1680 allocs/op
+build/intern           median   159747.0 ns/op (min 158183.0 max 161863.0)    80616 B/op   1683 allocs/op
+alloc/string-copy      median    53127.0 ns/op (min 52903.0 max 53435.0)    77120 B/op   1680 allocs/op
+lookup/uint32+reverse  median    35270.0 ns/op (min 35102.0 max 35500.0)        0 B/op      0 allocs/op

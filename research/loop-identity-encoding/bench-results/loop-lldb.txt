@@ -1,0 +1,11 @@
+corpus=research/loop-identity-encoding/corpus/loop-lldb.ids.txt.gz occurrences=565 unique=31 avg_len=18.0
+heap strings=26.3 KiB uint32=4.1 KiB hash64=4.9 KiB
+match/string-map           9899.0 ns/op        0 B/op      0 allocs/op
+match/uint32-map          16684.0 ns/op        0 B/op      0 allocs/op
+match/hash64-map          17465.0 ns/op        0 B/op      0 allocs/op
+match/struct-key-map      47248.0 ns/op        0 B/op      0 allocs/op
+build/fmt-sprintf        154600.0 ns/op    39231 B/op   2260 allocs/op
+build/string-concat       40356.0 ns/op    12104 B/op    565 allocs/op
+build/intern              54398.0 ns/op    13936 B/op    568 allocs/op
+alloc/string-copy         15389.0 ns/op    12104 B/op    565 allocs/op
+lookup/uint32+reverse     10943.0 ns/op        0 B/op      0 allocs/op

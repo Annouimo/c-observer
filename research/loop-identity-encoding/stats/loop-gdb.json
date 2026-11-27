@@ -1,0 +1,23 @@
+{
+  "avg_id_len": 15.69,
+  "dictionary_bytes": 204,
+  "hash_bytes": 219191,
+  "hash_gzip_bytes": 3431,
+  "id_key_bytes": 2730,
+  "id_occurrences": 546,
+  "id_value_bytes": 9660,
+  "int_bytes": 203134,
+  "int_gzip_bytes": 3328,
+  "json_compact_bytes": 215420,
+  "json_gzip_bytes": 3297,
+  "label": "loop-gdb",
+  "max_id_len": 20,
+  "none_bytes": 195623,
+  "none_gzip_bytes": 3046,
+  "reason": "exited",
+  "snapshots": 107,
+  "strint_bytes": 204795,
+  "strint_gzip_bytes": 3236,
+  "unique_all_ids": 15,
+  "unique_variable_ids": 9
+}
