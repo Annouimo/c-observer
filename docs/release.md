@@ -7,3 +7,4 @@ publish-npm.yml 支持手动 DRY_RUN（私有 tarball）；main 上 PREVIEW_VERS
 预发行通过 main 的 PREVIEW_VERSION 变更触发，或手动选择 PUBLISH_NEXT 并明确输入 PREVIEW_VERSION；不自动改 latest，禁止覆盖已发布版本。发布 job 在全部测试成功后通过现有 npm Trusted Publishing（workflow publish-npm.yml）发布 next，并从同一产物创建 GitHub prerelease。若 npm 成功但 GitHub Release 失败，人工从该次已验证 artifact 恢复 Release，不重复 npm publish。正式 stable 需另行批准、更新 VERSION 与发行说明，再 PUBLISH_LATEST。
 
 旧 TUI 分发、四平台历史支持见 Git 历史；不回退旧用户的已发行版本。Companion GUI 完整联调留待稳定版。引擎精简、采集预算优化留待 beta 之后。
+main 上修改发行工作流也触发已声明 beta 的幂等 next 检查，已发布版本不会覆盖；不触发 stable。

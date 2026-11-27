@@ -2,7 +2,7 @@ name: Build and publish Observer GUI
 on:
   push:
     branches: [main]
-    paths: ['PREVIEW_VERSION']
+    paths: ['PREVIEW_VERSION', '.github/workflows/publish-npm.yml']
   workflow_dispatch:
     inputs:
       mode:
@@ -188,7 +188,9 @@ jobs:
           const timedOut=lines.some(e=>e.Test==='TestRealObservation'&&e.Output?.includes('request_timed_out: variables: context deadline exceeded'));
           if(failed.length!==1||failed[0].Test!=='TestRealObservation'||pkgFailures.length!==1||!pkgFailures[0].Package?.endsWith('/internal/engine')||!timedOut)process.exit(1);
           NODE
-            go test -mod=readonly -count=1 -v -run '^TestRealObservation
+            go test -mod=readonly -count=1 -v -run '^TestRealObservation$' ./internal/engine
+          fi
+      - name: Verify actual Windows observation
         if: runner.os == 'Windows'
         shell: msys2 {0}
         env:
