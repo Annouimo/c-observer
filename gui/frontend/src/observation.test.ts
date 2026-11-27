@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { parseDocument, tokenize, groupTrace, flatten, values, changed, label, type Run } from "./observation.ts";
+import { parseDocument, tokenize, groupTrace, flatten, values, changed, label, valueChanged, type Run } from "./observation.ts";
 const fixture=JSON.parse(readFileSync(new URL("../../../testdata/snapshots/wrong-index.json",import.meta.url),"utf8"));
 test("fixture is explicitly synthetic and preserves observed values",()=>{
   const doc=parseDocument(fixture);
@@ -35,4 +35,19 @@ test("reject invalid record and duplicate ids",()=>{
 test("v1 byte input differs from fixture plain text",()=>{
   const x=structuredClone(fixture);delete x.synthetic;x.format="c-observer-record";x.schema_version=1;x.run.session.backend="gdb-mi";x.stdin=btoa("abc\n");x.expected_stdout=null;
   assert.equal(parseDocument(x).stdin,"abc\n");assert.equal(parseDocument(x).expected,null);
+});
+
+test("partial array differences are evidence only at matching observed indices",()=>{
+  const {run}=parseDocument(fixture);
+  const a=values(run.snapshots[1],{name:"a",fn:"main"})[0];
+  const b=structuredClone(a);
+  b.children![0].children![0].value="999";
+  assert.equal(valueChanged(a,b),true);
+  b.children![0].children![0].status="not_captured";
+  assert.equal(valueChanged(a,b),false);
+});
+test("Go nil slices in a failed run are accepted",()=>{
+  const x=structuredClone(fixture);delete x.synthetic;x.format="c-observer-record";x.schema_version=1;x.run.session.backend="gdb-mi";
+  x.stdin="";x.expected_stdout=null;x.run.snapshots=null;x.run.session.sources=null;x.run.reason="compile_failed";
+  assert.equal(parseDocument(x).run.snapshots.length,0);
 });

@@ -28,7 +28,17 @@ function validLocation(l: any): boolean {
 export function parseDocument(x: any): Document {
   const synthetic = x?.synthetic === true && x?.run?.session?.backend === "synthetic";
   if (!synthetic && (x?.format !== "c-observer-record" || x.schema_version !== 1 || x?.run?.session?.backend === "synthetic")) throw Error("不支持的观察记录格式");
+  // Go's nil slices serialize as null, notably on compile/startup failure.
   const r = x.run;
+  if (r?.session?.sources === null) r.session.sources = [];
+  if (r?.snapshots === null) r.snapshots = [];
+  if (Array.isArray(r?.snapshots)) for (const s of r.snapshots) {
+    if (s?.frames === null) s.frames = [];
+    if (Array.isArray(s?.frames)) for (const f of s.frames) {
+      if (f?.variables === null) f.variables = [];
+    }
+    if (s?.globals === null) s.globals = [];
+  }
   if (!r || !r.session || typeof r.session.backend !== "string" ||
     !Array.isArray(r.session.sources) || !r.session.sources.every((s: any) => s && typeof s.path === "string" && typeof s.text === "string") ||
     !Array.isArray(r.snapshots) || typeof r.reason !== "string" || !r.output ||
@@ -60,15 +70,28 @@ export function comparable(v: Variable): boolean {
   return v.status === "observed" && !v.value_truncated &&
     (v.children?.length ? v.children_complete === true && v.children.every(comparable) : v.value !== undefined);
 }
-function signature(v: Variable): string {
-  return JSON.stringify([v.type,v.kind,v.value,v.index,v.array_length,v.children?.map(c => [c.name,signature(c)])]);
+// Only compare unique, same-name/same-type children; partial arrays can
+// still provide real evidence of differences at recorded indices.
+export function childBefore(previous: Variable | undefined, child: Variable): Variable | undefined {
+  if (!previous || previous.status !== "observed") return undefined;
+  const candidates = (previous.children ?? []).filter(c => c.name === child.name && c.index === child.index && c.type === child.type && c.kind === child.kind);
+  return candidates.length === 1 ? candidates[0] : undefined;
+}
+export function valueChanged(previous: Variable | undefined, value: Variable): boolean {
+  if (!previous || previous.status !== "observed" || value.status !== "observed" || previous.type !== value.type || previous.kind !== value.kind) return false;
+  if (value.children?.length) return value.children.some(c => valueChanged(childBefore(previous,c),c));
+  return comparable(previous) && comparable(value) && previous.value !== value.value;
+}
+export function previousValue(run: Run, s: Snapshot, c: Column): Variable | undefined {
+  if (!s.id) return undefined;
+  const p = run.snapshots[s.id-1];
+  if (!p || (!c.global && (p.location.function !== s.location.function || p.frames.length !== s.frames.length))) return undefined;
+  const a = values(p,c), b = values(s,c);
+  return a.length === 1 && b.length === 1 && a[0].type === b[0].type ? a[0] : undefined;
 }
 export function changed(run: Run, s: Snapshot, c: Column): boolean {
-  if (!s.id) return false;
-  const p = run.snapshots[s.id-1];
-  if (!p || (!c.global && (p.location.function !== s.location.function || p.frames.length !== s.frames.length))) return false;
-  const a = values(p,c), b = values(s,c);
-  return a.length === 1 && b.length === 1 && a[0].type === b[0].type && comparable(a[0]) && comparable(b[0]) && signature(a[0]) !== signature(b[0]);
+  const v=values(s,c);
+  return v.length===1 && valueChanged(previousValue(run,s,c),v[0]);
 }
 export function label(v: Variable): string {
   if (v.status === "not_captured") return "未采集";

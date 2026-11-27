@@ -1,7 +1,7 @@
 <script lang="ts">
   import example from "../../../testdata/snapshots/wrong-index.json";
   import DataValue from "./DataValue.svelte";
-  import { parseDocument, tokenize, groupTrace, values, changed, sourceLine, columnKey, outputText, MAX_BYTES, type Column, type Location, type Snapshot, type TraceNode, type Token } from "./observation";
+  import { parseDocument, tokenize, groupTrace, values, changed, previousValue, columnKey, outputText, MAX_BYTES, type Column, type Location, type Snapshot, type TraceNode, type Token } from "./observation";
 
   let doc = $state(parseDocument(example));
   let mode = $state<"trace"|"source"|"io">("trace");
@@ -15,10 +15,10 @@
   let lines = $derived(tokenize(doc.run.session.sources.find(s=>s.path===selectedPath)?.text??""));
   let sourceTokens = $derived(new Map(doc.run.session.sources.map(s=>[s.path,tokenize(s.text)])));
   let tree = $derived(groupTrace(doc.run));
-  let names = $derived([...new Map(doc.run.snapshots.flatMap(s=>[
+  let names = $derived([...new Map<string,Column>(doc.run.snapshots.flatMap(s=>[
     ...(s.frames[0]?.variables??[]).map(v=>({name:v.name,fn:s.frames[0]?.location.function??s.location.function})),
     ...(s.globals??[]).map(v=>({name:v.name,global:true}))
-  ]).map(c=>[columnKey(c),c])).values()]);
+  ]).map(c=>[columnKey(c),c] as [string,Column])).values()]);
   let selectedColumn = $state("");
   let matching = $derived(filter ? doc.run.snapshots.filter(s=>s.location.file===filter!.file && s.location.line===filter!.line) : doc.run.snapshots);
   let nodes = $derived(grouped&&!filter ? tree : matching.map(s=>({kind:"observation",snapshot:s} as TraceNode)));
@@ -67,7 +67,7 @@
       <small>{s.location.function??""} {s.location.file.split(/[\\/]/).at(-1)??""}</small>
       <button class="inline-control" onclick={()=>detail=detail===s.id?null:s.id}>{detail===s.id?"收起状态":"全部状态"}</button></div></td>
     {#each columns as c (columnKey(c))}
-      <td class:changed={changed(doc.run,s,c)}>{#each values(s,c) as v}<DataValue value={v}/>{:else}<span class="muted" title="当前记录无对应值">—</span>{/each}</td>
+      <td class:changed={changed(doc.run,s,c)}>{#each values(s,c) as v}<DataValue value={v} previous={previousValue(doc.run,s,c)}/>{:else}<span class="muted" title="当前记录无对应值">—</span>{/each}</td>
     {/each}
   </tr>
   {#if detail===s.id}
