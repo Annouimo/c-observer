@@ -32,3 +32,7 @@ CI 额外使用 Windows GUI 子系统参数，以及 macOS .app 包装与 ad-hoc
 - [ ] 断网后重新启动仍可用；不需要 Node 或 Go 运行环境。
 
 记录平台、系统版本、压缩与解压体积、粗略启动时间与内存。CI 构建成功不代表 GUI 真机验收成功。
+
+## 技术决策
+
+[软件签名与平台兼容性决策](DECISIONS.md)：仅支持 Windows 11 amd64 与 macOS Apple Silicon，复用系统 WebView，不建设正式可信签名及额外兼容机制。
