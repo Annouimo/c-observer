@@ -92,10 +92,10 @@
 {/if}
 <style>
   .module{border:1px solid var(--line);border-radius:var(--ui-radius-sm);background:var(--panel);min-width:0;color:var(--text)}
-  .chosen,.module.chosen{box-shadow:inset 0 0 0 1.5px var(--accent)}
-  .module.chosen:has(.heading){box-shadow:inset 0 0 0 1.5px var(--accent)}
+  .chosen,.module.chosen{box-shadow:inset 0 0 0 1px var(--accent)}
+  .module.chosen:has(.heading){box-shadow:inset 0 0 0 1px var(--accent)}
   button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent}
-  button:hover:not(.diff){background:var(--hover)}button:focus-visible{outline:1.5px solid var(--accent);outline-offset:-4px}button.diff:hover{background:var(--soft)}
+  button:hover:not(.diff){background:var(--hover)}button:focus-visible{outline:var(--ui-focus-width) solid var(--ui-focus);outline-offset:-2px}button.diff:hover{background:var(--soft)}
   .scalar{display:flex;align-items:baseline;gap:5px;text-align:left;padding:5px 8px;width:100%;min-width:0;min-height:30px;position:relative}
   .scalar-name{font:12px var(--mono);color:var(--muted);flex:0 0 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .number{font:600 14px/1.35 var(--mono);flex:0 1 auto;min-width:0;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
