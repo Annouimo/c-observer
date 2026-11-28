@@ -1,5 +1,8 @@
 <script lang="ts">
   import {onMount} from "svelte";
+  import brand from "../../../assets/icons/observer.svg?url";
+  import spriteSource from "../ui/icons/sprite.svg?raw";
+  const sprite=spriteSource.replace('<svg xmlns="http://www.w3.org/2000/svg">','<svg xmlns="http://www.w3.org/2000/svg" hidden aria-hidden="true">').replace(/<symbol id="([^"]+)"/g,(_,name)=>'<symbol id="routilet-icon-'+name+'"');
   import {fly} from "svelte/transition";
   import {connect,call,type Initial} from "./native";
   import example from "../../../testdata/snapshots/wrong-index.json";
@@ -150,13 +153,15 @@
   }
 </script>
 <svelte:window onkeydown={keys}/>
+<!-- Trusted, vendored SVG resource, never user or record content. -->
+{@html sprite}
 <header>
-  <strong>C Observer</strong>
+  <div class="brand"><img src={brand} alt="" width="27" height="27"/><strong>C Observer</strong></div>
   {#if screen==="replay"}
     {#if native}
-      {#if !sessionMode}<button onclick={setup}>新建观察</button>{/if}
-      {#if live}<button onclick={()=>execute("Rerun")}>重跑</button><button disabled={saving} onclick={exportRecord}>保存记录</button>{/if}
-      {#if !sessionMode}<button onclick={openNative}>打开记录</button>{/if}
+      {#if !sessionMode}<button class="ui-button" onclick={setup}><svg class="ui-icon" aria-hidden="true"><use href="#routilet-icon-plus"/></svg>新建观察</button>{/if}
+      {#if live}<button class="ui-button" onclick={()=>execute("Rerun")}><svg class="ui-icon" aria-hidden="true"><use href="#routilet-icon-refresh-cw"/></svg>重跑</button><button class="ui-button" disabled={saving} onclick={exportRecord}>保存记录</button>{/if}
+      {#if !sessionMode}<button class="ui-button" onclick={openNative}><svg class="ui-icon" aria-hidden="true"><use href="#routilet-icon-folder-open"/></svg>打开记录</button>{/if}
     {:else}<label class="file">打开记录<input type="file" accept=".json,application/json" onchange={load}/></label>{/if}
   {/if}
   <span class="spacer"></span>
@@ -168,25 +173,25 @@
 {#if screen==="starting"}
   <main class="center"><span>正在启动…</span></main>
 {:else if screen==="running"}
-  <main class="center"><section class="run-card"><span class="spinner" aria-hidden="true"></span><h1>{cancelling?"正在停止并清理":"正在编译和采集"}</h1><p>{source.split(/[\\/]/).at(-1)}</p><button disabled={cancelling} onclick={cancelRun}>取消</button></section></main>
+  <main class="center"><section class="run-card"><span class="spinner" aria-hidden="true"></span><h1>{cancelling?"正在停止并清理":"正在编译和采集"}</h1><p>{source.split(/[\\/]/).at(-1)}</p><button class="ui-button" disabled={cancelling} onclick={cancelRun}>取消</button></section></main>
 {:else if screen==="setup"}
   <main class="center">
     <section class="setup-card">
       <h1>新建观察</h1>
       <label for="source-path">C 源文件</label>
-      <div class="source-picker"><input id="source-path" bind:value={source} placeholder="选择或输入 .c 文件路径"/><button disabled={!native} onclick={pickSource}>选择文件</button></div>
+      <div class="source-picker"><input class="ui-field" id="source-path" bind:value={source} placeholder="选择或输入 .c 文件路径"/><button class="ui-button" data-kind="outline" disabled={!native} onclick={pickSource}><svg class="ui-icon" aria-hidden="true"><use href="#routilet-icon-folder-open"/></svg>选择文件</button></div>
       <div class="samples">
-        <label>输入<textarea bind:value={stdin} spellcheck={false} placeholder="可为空"></textarea></label>
-        <label><span class="expected-label"><input type="checkbox" bind:checked={withExpected}/> 预期输出</span><textarea bind:value={expected} disabled={!withExpected} spellcheck={false} placeholder="可选"></textarea></label>
+        <label>输入<textarea class="ui-textarea" bind:value={stdin} spellcheck={false} placeholder="可为空"></textarea></label>
+        <label><span class="expected-label"><input type="checkbox" bind:checked={withExpected}/> 预期输出</span><textarea class="ui-textarea" bind:value={expected} disabled={!withExpected} spellcheck={false} placeholder="可选"></textarea></label>
       </div>
-      <button class="primary" disabled={!native||!source.trim()} onclick={()=>execute("Run",source,stdin,withExpected,expected)}>运行观察</button>
-      <button class="quiet open-record" disabled={!native} onclick={openNative}>打开已有观察记录</button>
+      <button class="ui-button" data-kind="primary" disabled={!native||!source.trim()} onclick={()=>execute("Run",source,stdin,withExpected,expected)}><svg class="ui-icon" aria-hidden="true"><use href="#routilet-icon-play"/></svg>运行观察</button>
+      <button class="ui-button quiet open-record" disabled={!native} onclick={openNative}>打开已有观察记录</button>
     </section>
   </main>
 {:else}
 <section class="context">
   <button class="source-context" onclick={()=>show("source")} disabled={!doc.run.session.sources.length} aria-label="查看完整源码" title="查看完整源码">
-    <div class="context-head"><span title={contextTitle}>{contextTitle}</span><span class="spacer"></span><span class="expand" aria-hidden="true">↗</span></div>
+    <div class="context-head"><span title={contextTitle}>{contextTitle}</span><span class="spacer"></span><span class="expand" aria-hidden="true"><svg class="ui-icon" aria-hidden="true"><use href="#routilet-icon-external-link"/></svg></span></div>
     <div class="context-lines">
       {#if line>0&&sourceLines[line-1]}
         <div class="source-window" use:slide={motion}>
@@ -196,7 +201,7 @@
     </div>
   </button>
   <button class="sample" onclick={()=>show("io")} title={warning||result} aria-label={"查看样例对比 · "+(warning||result)}>
-    <span class="sample-title">{#if warning}<span class="bad">{warning}</span>{/if}<span class="spacer"></span><span class="expand" aria-hidden="true">↗</span></span>
+    <span class="sample-title">{#if warning}<span class="bad">{warning}</span>{/if}<span class="spacer"></span><span class="expand" aria-hidden="true"><svg class="ui-icon" aria-hidden="true"><use href="#routilet-icon-external-link"/></svg></span></span>
     <span class="sample-row"><small>输入</small><code>{samplePreview(doc.stdin)}</code></span>
     <span class="sample-row"><small>预期</small><code>{samplePreview(doc.expected)}</code></span>
     <span class="sample-row" class:bad={result==="输出不一致"}><small title={result}>实际{result==="输出不一致"?" ≠":""}</small><code>{samplePreview(actual)}</code></span>
@@ -231,14 +236,14 @@
 </aside>{/if}
 </div>
 <Timeline {step} {total} {events} focus={selected?columnLabel(selected):""} onGo={go}/>
-<dialog bind:this={dialog}>
-  <div class="dialog-head"><strong>{dialogMode==="source"?"冻结源码":"输入输出"}</strong><span class="spacer"></span><button onclick={()=>dialog.close()} aria-label="关闭">×</button></div>
+<dialog class="ui-dialog" bind:this={dialog}>
+  <div class="dialog-head"><strong>{dialogMode==="source"?"冻结源码":"输入输出"}</strong><span class="spacer"></span><button class="ui-button ui-icon-button" onclick={()=>dialog.close()} aria-label="关闭"><svg class="ui-icon" aria-hidden="true"><use href="#routilet-icon-x"/></svg></button></div>
   <div class="dialog-body">
     {#if dialogMode==="source"}
-      {#if doc.run.session.sources.length>1}<select aria-label="源码文件" bind:value={sourcePath}>{#each doc.run.session.sources as s}<option value={s.path}>{s.path}</option>{/each}</select>{/if}
+      {#if doc.run.session.sources.length>1}<select class="ui-select" aria-label="源码文件" bind:value={sourcePath}>{#each doc.run.session.sources as s}<option value={s.path}>{s.path}</option>{/each}</select>{/if}
       {#each fullLines as text,i}<div class="code-line" class:current-line={sourcePath===interval.origin?.file&&line===i+1}><span class="line-no">{i+1}</span><code>{text||" "}</code></div>{/each}
     {:else}
-      <div class="io-head"><small>{result} · {doc.comparison||"原始字节"}</small><span class="spacer"></span>{#if doc.expected!==null}<button class="quiet" onclick={()=>rawOutput=!rawOutput}>{rawOutput?"逐行对比":"原始文本"}</button>{/if}</div>
+      <div class="io-head"><small>{result} · {doc.comparison||"原始字节"}</small><span class="spacer"></span>{#if doc.expected!==null}<button class="ui-button quiet" onclick={()=>rawOutput=!rawOutput}>{rawOutput?"逐行对比":"原始文本"}</button>{/if}</div>
       <h2>输入</h2><pre>{doc.stdin}</pre>
       {#if doc.expected!==null&&!rawOutput}
         <table class="output-table"><thead><tr><th>行</th><th>预期</th><th>实际 {doc.run.output.stdout_truncated?"· 截断":""}</th></tr></thead><tbody>{#each comparisonRows as r,i}<tr class:bad-row={!r.equal}><th>{i+1}</th><td>{r.expected??"—"}</td><td>{r.actual??"—"}</td></tr>{/each}</tbody></table>
@@ -255,19 +260,16 @@
 </dialog>
 {/if}
 <style>
-  :global(*){box-sizing:border-box}
-  :global(body){margin:0;font:13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text);background:var(--bg);--bg:#f5f6f8;--panel:#fff;--text:#20242b;--muted:#626d7c;--line:#dfe3e9;--accent:#285cba;--soft:#eaf1ff;--hover:#f0f4fa;--mono:ui-monospace,SFMono-Regular,Consolas,monospace;color-scheme:light}
-  @media(prefers-color-scheme:dark){:global(body){--bg:#161a20;--panel:#20262e;--text:#e5e9ef;--muted:#a1acb9;--line:#39434e;--accent:#92b8ff;--soft:#273a56;--hover:#29313b;color-scheme:dark}}
+  :global(body){--bg:var(--ui-canvas);--panel:var(--ui-surface);--text:var(--ui-text);--muted:var(--ui-muted);--line:var(--ui-line);--accent:var(--ui-accent);--soft:var(--ui-selected);--hover:var(--ui-hover);--mono:var(--ui-mono);color:var(--text);background:var(--bg)}
   :global(#app){height:100vh;display:flex;flex-direction:column;min-height:0}
   header,.context{flex:none;background:var(--panel)}
-  header{display:flex;align-items:center;gap:10px;padding:7px 14px;border-bottom:1px solid var(--line);min-height:40px}
-  header strong{font-size:15px}.spacer{flex:1}small{color:var(--muted);font-size:11px}
-  button,select,.file{border:1px solid var(--line);border-radius:4px;padding:3px 8px;color:inherit;font:inherit;background:var(--panel);cursor:pointer}
-  button:hover,.file:hover{background:var(--hover)}button:disabled{opacity:.35;cursor:default}
+  header{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 14px;border-bottom:1px solid var(--line);min-height:44px}
+  header strong{font-size:var(--ui-heading)}.brand{display:flex;align-items:center;gap:8px;flex:none}.brand img{display:block}.spacer{flex:1}small{color:var(--muted);font-size:11px}
+  .file{border:1px solid var(--line);border-radius:var(--ui-radius);padding:5px 9px;color:inherit;font:inherit;background:var(--panel);cursor:pointer}
+  .file:hover{background:var(--hover)}
   .file input{position:absolute;opacity:0;width:1px;height:1px}.file:focus-within{outline:2px solid var(--accent)}
-  .bad{color:#b45309}
-  @media(prefers-color-scheme:dark){.bad{color:#f3ad71}}
-  .context{display:grid;grid-template-columns:minmax(0,5fr) minmax(180px,3fr);gap:12px;padding:6px 14px 8px;border-bottom:1px solid var(--line)} .source-context{min-width:0;border:0;padding:0;background:transparent;text-align:left;overflow:hidden}.source-context:disabled{opacity:1;cursor:default}.source-context:hover:not(:disabled),.sample:hover{background:var(--hover)}.expand{font-size:12px;color:var(--muted);font-weight:400} .sample{display:grid;grid-template-rows:17px repeat(3,21px);min-width:0;text-align:left;border:0;border-left:1px solid var(--line);border-radius:0;padding:0 0 0 12px;overflow:hidden}.sample-title{display:flex;align-items:center;justify-content:space-between;color:var(--muted);font-size:11px}.sample-row{display:grid;grid-template-columns:42px minmax(0,1fr);gap:6px;align-items:center;min-width:0;min-height:0;height:21px;overflow:hidden}.sample-row code{display:block;min-width:0;max-width:100%;height:21px;overflow:hidden;text-overflow:ellipsis;white-space:pre;line-height:21px}.keyword{color:var(--accent);font-weight:600}.comment{color:var(--muted)}.literal{color:var(--muted)}
+  .bad{color:var(--ui-danger)}
+  .context{display:grid;grid-template-columns:minmax(0,5fr) minmax(180px,3fr);gap:12px;padding:6px 14px 8px;border-bottom:1px solid var(--line)} .source-context{min-width:0;border:0;padding:0;background:transparent;color:inherit;text-align:left;overflow:hidden}.source-context:disabled{opacity:1;cursor:default}.source-context:hover:not(:disabled),.sample:hover{background:var(--hover)}.expand{font-size:12px;color:var(--muted);font-weight:400} .sample{background:transparent;color:inherit;display:grid;grid-template-rows:17px repeat(3,21px);min-width:0;text-align:left;border:0;border-left:1px solid var(--line);border-radius:0;padding:0 0 0 12px;overflow:hidden}.sample-title{display:flex;align-items:center;justify-content:space-between;color:var(--muted);font-size:11px}.sample-row{display:grid;grid-template-columns:42px minmax(0,1fr);gap:6px;align-items:center;min-width:0;min-height:0;height:21px;overflow:hidden}.sample-row code{display:block;min-width:0;max-width:100%;height:21px;overflow:hidden;text-overflow:ellipsis;white-space:pre;line-height:21px}.keyword{color:var(--accent);font-weight:600}.comment{color:var(--muted)}.literal{color:var(--muted)}
   .context-head{display:flex;align-items:center;color:var(--muted);font-size:11px;gap:8px;margin-bottom:3px}
   .context-head>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .quiet{border:0;padding:3px 7px;font-size:12px;background:transparent}
@@ -294,25 +296,24 @@
   .empty{color:var(--muted);padding:20px;text-align:center}
   button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   .io-head{display:flex;align-items:center;gap:8px}
-  .error{padding:6px 14px;color:#b45309;overflow-wrap:anywhere}
+  .error{padding:6px 14px;color:var(--ui-danger);overflow-wrap:anywhere}
   .notice{padding:6px 14px;color:var(--muted);overflow-wrap:anywhere}
   .center{display:flex;align-items:center;justify-content:center}
   .setup-card{width:min(620px,100%);display:grid;gap:10px;padding:20px}
   .setup-card h1,.run-card h1{font-size:18px;margin:0 0 6px;font-weight:600}
   .setup-card label{font-size:12px;color:var(--muted)}
   .source-picker{display:flex;gap:6px}
-  .source-picker input,textarea{min-width:0;width:100%;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--text);padding:8px;font:13px var(--mono)}
+  .source-picker input,textarea{min-width:0;width:100%;font:13px var(--mono)}
   .source-picker button{flex:none}.samples{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
   .samples label{display:flex;flex-direction:column;gap:5px}.expected-label{display:flex;align-items:center;height:17px;gap:4px}
-  textarea{height:145px;resize:vertical}.primary{background:var(--accent);color:var(--panel);border-color:transparent;font-weight:600;padding:8px}
-  .primary:hover:not(:disabled){background:var(--accent);opacity:.88}
+  textarea{height:145px;resize:vertical}
   .open-record{justify-self:center;color:var(--muted)}
   .run-card{display:grid;justify-items:center;gap:10px;text-align:center}
   .run-card p{color:var(--muted);margin:0}
   .spinner{width:22px;height:22px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.spinner{animation:none}}
-  dialog{color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:0;width:min(760px,90vw);max-height:85vh}
-  dialog::backdrop{background:#0003}
+  dialog.ui-dialog{padding:0;width:min(760px,90vw);max-height:85vh}
+  
   .dialog-head{display:flex;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line)}
   .dialog-body{padding:12px;max-height:70vh;overflow:auto}
   .dialog-body h2{margin-top:12px}

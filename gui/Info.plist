@@ -5,6 +5,7 @@
 <key>CFBundleIdentifier</key><string>com.routilet.observer</string>
 <key>CFBundleName</key><string>C Observer</string>
 <key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleIconFile</key><string>Observer.icns</string>
 <key>CFBundleVersion</key><string>1</string>
 <key>CFBundleShortVersionString</key><string>0.2.0</string>
 <key>LSMinimumSystemVersion</key><string>12.0</string>

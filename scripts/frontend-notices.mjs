@@ -13,4 +13,5 @@ for(const name of list){
   sections.push('## '+pkg.name+' '+pkg.version,'');
   for(const file of files)sections.push('--- '+file+' ---',(await fs.readFile(path.join(root,file),'utf8')).trimEnd(),'');
 }
+sections.push('## Lucide SVG icons (0.456.0)','',(await fs.readFile(path.join(dir,'ui/icons/LICENSE'),'utf8')).trimEnd(),'');
 await fs.writeFile(process.argv[2],sections.join('\n')+'\n');

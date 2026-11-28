@@ -3,6 +3,9 @@ on:
   push:
     branches: [main]
     paths: ['VERSION', 'PREVIEW_VERSION']
+  pull_request:
+    branches: [main]
+    paths: ['gui/**', 'assets/icons/**', 'scripts/**', 'PREVIEW_VERSION', '.github/workflows/publish-npm.yml']
   workflow_dispatch:
     inputs:
       mode:
@@ -213,6 +216,19 @@ jobs:
           gdb --version
           gdb -nx -batch -ex 'python import sys; print(sys.version)'
           go test -mod=readonly -count=1 -v ./internal/app ./internal/engine
+      - name: Generate native application icons
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix out/icon-tools --no-save --ignore-scripts --no-audit --no-fund @resvg/resvg-js@2.6.2
+          node scripts/generate-icons.cjs
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            go run github.com/akavel/rsrc@v0.10.2 -arch amd64 -ico out/icons/Observer.ico -o gui/observer_windows_amd64.syso
+            test -s gui/observer_windows_amd64.syso
+          else
+            iconutil -c icns out/icons/Observer.iconset -o out/icons/Observer.icns
+            test -s out/icons/Observer.icns
+          fi
       - name: Build and sign Apple Silicon app
         if: runner.os == 'macOS'
         env:
@@ -226,6 +242,8 @@ jobs:
           app='stage/C Observer.app'
           go build -mod=readonly -tags production -trimpath -ldflags "-s -w -X main.version=$VERSION" -o "$app/Contents/MacOS/c-observer" ./gui
           cp gui/Info.plist "$app/Contents/Info.plist"
+          mkdir -p "$app/Contents/Resources"
+          cp out/icons/Observer.icns "$app/Contents/Resources/"
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION%%-*}" "$app/Contents/Info.plist"
           codesign --force --sign - "$app"
           codesign --verify --strict "$app"
