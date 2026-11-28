@@ -96,5 +96,8 @@
   @media(prefers-reduced-motion:reduce){.mark-reveal{animation:none}}
   .thumb-zone{position:absolute;left:8px;right:8px;top:23px;pointer-events:none}
   .thumb{position:absolute;width:16px;height:16px;border-radius:50%;background:var(--accent);border:2px solid var(--panel);box-shadow:0 0 0 1px var(--accent);transform:translate(-50%,-50%)}
-  .track:focus-visible,.position:focus-visible,.position input:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+  .track:focus-visible{outline:none}
+  .track:focus-visible .thumb{box-shadow:0 0 0 1px var(--accent),0 0 0 4px var(--panel),0 0 0 5.5px var(--accent)}
+  .position:focus-visible,.position input:focus-visible{outline:1.5px solid var(--accent);outline-offset:1px;border-radius:4px}
+  @media(forced-colors:active){.track:focus-visible .thumb{outline:2px solid Highlight;outline-offset:3px}}
 </style>
