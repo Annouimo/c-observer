@@ -83,7 +83,7 @@
   .focus{color:var(--accent);font:600 12px var(--mono);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   small{font:11px system-ui;color:var(--muted);font-weight:400}
   .position{font:12px var(--mono);font-variant-numeric:tabular-nums;color:var(--muted);border:0;background:transparent;padding:3px 5px;white-space:nowrap;cursor:pointer}
-  .position:hover:not(:disabled){background:var(--hover);border-radius:4px}
+  .position:hover:not(:disabled){background:var(--hover);border-radius:var(--ui-radius-sm)}
   .position input{width:65px;font:inherit;color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:4px;text-align:right}
   .track{position:relative;height:36px;cursor:ew-resize;touch-action:none;user-select:none}
   .track[aria-disabled="true"]{cursor:default}
