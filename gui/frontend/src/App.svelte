@@ -267,7 +267,7 @@
   header strong{font-size:var(--ui-heading)}.brand{display:flex;align-items:center;gap:8px;flex:none}.brand img{display:block}.spacer{flex:1}small{color:var(--muted);font-size:11px}
   .file{border:1px solid var(--line);border-radius:var(--ui-radius);padding:5px 9px;color:inherit;font:inherit;background:var(--panel);cursor:pointer}
   .file:hover{background:var(--hover)}
-  .file input{position:absolute;opacity:0;width:1px;height:1px}.file:focus-within{outline:2px solid var(--accent)}
+  .file input{position:absolute;opacity:0;width:1px;height:1px}.file:focus-within{outline:var(--ui-focus-width) solid var(--ui-focus);outline-offset:-1px}
   .bad{color:var(--ui-danger)}
   .context{display:grid;grid-template-columns:minmax(0,5fr) minmax(180px,3fr);gap:12px;padding:6px 14px 8px;border-bottom:1px solid var(--line)} .source-context{min-width:0;border:0;padding:0;background:transparent;color:inherit;text-align:left;overflow:hidden}.source-context:disabled{opacity:1;cursor:default}.source-context:hover:not(:disabled),.sample:hover{background:var(--hover)}.expand{font-size:12px;color:var(--muted);font-weight:400} .sample{background:transparent;color:inherit;display:grid;grid-template-rows:17px repeat(3,21px);min-width:0;text-align:left;border:0;border-left:1px solid var(--line);border-radius:0;padding:0 0 0 12px;overflow:hidden}.sample-title{display:flex;align-items:center;justify-content:space-between;color:var(--muted);font-size:11px}.sample-row{display:grid;grid-template-columns:42px minmax(0,1fr);gap:6px;align-items:center;min-width:0;min-height:0;height:21px;overflow:hidden}.sample-row code{display:block;min-width:0;max-width:100%;height:21px;overflow:hidden;text-overflow:ellipsis;white-space:pre;line-height:21px}.keyword{color:var(--accent);font-weight:600}.comment{color:var(--muted)}.literal{color:var(--muted)}
   .context-head{display:flex;align-items:center;color:var(--muted);font-size:11px;gap:8px;margin-bottom:3px}
@@ -294,7 +294,6 @@
   .capture-note{color:var(--muted);font-size:11px;margin-bottom:6px}
   .scalars:empty,.compounds:empty{display:none}
   .empty{color:var(--muted);padding:20px;text-align:center}
-  button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   .io-head{display:flex;align-items:center;gap:8px}
   .error{padding:6px 14px;color:var(--ui-danger);overflow-wrap:anywhere}
   .notice{padding:6px 14px;color:var(--muted);overflow-wrap:anywhere}
