@@ -91,7 +91,7 @@
   </button>
 {/if}
 <style>
-  .module{border:1px solid var(--line);border-radius:5px;background:var(--panel);min-width:0;color:var(--text)}
+  .module{border:1px solid var(--line);border-radius:var(--ui-radius-sm);background:var(--panel);min-width:0;color:var(--text)}
   .chosen,.module.chosen{outline:2px solid var(--accent);outline-offset:-2px}
   button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent}
   button:hover{background:var(--hover)}button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
