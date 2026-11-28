@@ -6,7 +6,7 @@
 
 ## 安装
 
-GUI 正式发行目标 0.2.0。以 [Releases](https://github.com/Routilet/c-observer/releases) 实际公开资产为准；未发布时请勿将开发预览当作正式发行。支持 Windows 11 x64 和 Apple Silicon Mac。下载对应 ZIP，解压打开应用。无需 Node.js；Windows 使用课程 GCC 16.2.0 / Python-enabled GDB 及系统 WebView2，macOS 使用 Clang/LLDB（APP ad-hoc 签名、未公证）。不扫描 IDE、不安装工具链。0.2.0 发布成功后为 npm latest；旧 Companion 0.2.8 的 ^0.1.0 依赖仍解析到 0.1.x，不自动迁移 GUI。
+GUI 正式发行版本 0.3.0。以 [Releases](https://github.com/Routilet/c-observer/releases) 实际公开资产为准；未发布时请勿将开发预览当作正式发行。支持 Windows 11 x64 和 Apple Silicon Mac。下载对应 ZIP，解压打开应用。无需 Node.js；Windows 使用课程 GCC 16.2.0 / Python-enabled GDB 及系统 WebView2，macOS 使用 Clang/LLDB（APP ad-hoc 签名、未公证）。不扫描 IDE、不安装工具链。推荐通过 Routilet 正式通道安装；Companion 0.2.0 按调试后端、会话协议和实际能力判断兼容性，不绑定特定 Observer 发行版本。
 
 ## 开发
 
