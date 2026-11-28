@@ -1,0 +1,13 @@
+{
+  "version": "0.1.0",
+  "source": "Routilet/ui",
+  "sourceCommit": "144a863117c051291cf8988e1d2e1fa4e0fd31f1",
+  "algorithm": "git-blob-sha1",
+  "files": {
+    "gui/frontend/ui/routilet.css": "25cea217f26b338eba064491b3fffff662df690f",
+    "gui/frontend/ui/icons/sprite.svg": "d745b89befc9e20fb5d70a3ff437045e508b003c",
+    "gui/frontend/ui/icons/LICENSE": "325e8ff0aae2dde3134c1ceed780a11d7bd8f544",
+    "gui/frontend/ui/icons/semantics.json": "cb5e6030f7ee155cb3e16abcd4196c41cbc02d89",
+    "assets/icons/observer.svg": "7b340968ab09db4228fbb660b0529f532b66b941"
+  }
+}
